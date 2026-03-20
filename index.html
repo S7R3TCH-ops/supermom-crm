@@ -24,7 +24,7 @@
   --purple: #6941C6; --purple-s: #F9F5FF; --purple-b: #E9D7FE;
   --orange: #C4320A; --orange-s: #FFF4ED; --orange-b: #FDDCAB;
   --nav-h: calc(60px + env(safe-area-inset-bottom));
-  --hdr-h: calc(70px + env(safe-area-inset-top));
+  --hdr-h: calc(76px + env(safe-area-inset-top));
   --pad: max(14px, env(safe-area-inset-left));
   --r: 16px; --rsm: 12px;
   --sh: 0 2px 12px rgba(0,0,0,0.04);
@@ -77,12 +77,15 @@ body.modal-open{overflow:hidden;}
 /* Brand wrap (dashboard / clients) */
 .brand-wrap{display:flex;flex-direction:column;align-items:center;gap:2px;}
 #brand-logo{
-  height:46px;       /* fixed height — always fills the header */
-  max-width:180px;
+  /* Dimensions set dynamically by JS based on logo aspect ratio */
+  max-height:54px;
+  max-width:200px;
   width:auto;
+  height:auto;
   object-fit:contain;
-  filter:drop-shadow(0 2px 8px rgba(0,0,0,.25));
-  display:block;}
+  filter:drop-shadow(0 2px 8px rgba(0,0,0,.22));
+  display:block;
+  transition:opacity .2s;}
 .brand-title-txt{
   font-family:"Nunito",sans-serif;font-size:19px;font-weight:900;
   color:#fff;line-height:1;letter-spacing:-.4px;
@@ -767,12 +770,28 @@ function updateHeaderBrand(){
   const isDefault=!bizName||bizName==='Supermom for Hire';
   if(isDefault){nameEl.innerHTML='Supermom <span>for Hire</span>';} else {nameEl.textContent=bizName;}
   if(S.biz.logo){
+    // Reset sizing before measuring
+    logoEl.style.maxHeight='';logoEl.style.maxWidth='';logoEl.style.width='';logoEl.style.height='';
+    logoEl.onload=function(){
+      // Smart sizing: wide/wordmark logos fill by width, square/icon logos fill by height
+      const aspect=this.naturalWidth/(this.naturalHeight||1);
+      if(aspect>=2){
+        // Landscape/wordmark — let it be wide, cap at header width
+        this.style.maxWidth='210px';this.style.maxHeight='54px';
+        this.style.width='auto';this.style.height='auto';
+      } else {
+        // Square or portrait icon — fill height
+        this.style.maxHeight='54px';this.style.maxWidth='210px';
+        this.style.height='54px';this.style.width='auto';
+      }
+    };
     logoEl.src=S.biz.logo;
     logoEl.classList.remove('hidden');
-    nameEl.style.display='none'; // logo is the brand — hide text
+    nameEl.style.display='none';
   } else {
     logoEl.classList.add('hidden');
-    nameEl.style.display=''; // show text wordmark centred
+    logoEl.onload=null;
+    nameEl.style.display='';
   }
 }
 function handleLogoUpload(input){
