@@ -24,7 +24,7 @@
   --purple: #6941C6; --purple-s: #F9F5FF; --purple-b: #E9D7FE;
   --orange: #C4320A; --orange-s: #FFF4ED; --orange-b: #FDDCAB;
   --nav-h: calc(60px + env(safe-area-inset-bottom));
-  --hdr-h: calc(64px + env(safe-area-inset-top));
+  --hdr-h: calc(70px + env(safe-area-inset-top));
   --pad: max(14px, env(safe-area-inset-left));
   --r: 16px; --rsm: 12px;
   --sh: 0 2px 12px rgba(0,0,0,0.04);
@@ -54,24 +54,29 @@ body.modal-open{overflow:hidden;}
   background:linear-gradient(135deg,var(--pink) 0%,var(--pink-d) 100%);
   display:flex;align-items:center;padding-left:var(--pad);
   padding-right:var(--pad);gap:10px;flex-shrink:0;z-index:20;
-  box-shadow:0 4px 16px rgba(212,49,122,.15);}
-#hbk{width:36px;height:36px;border-radius:50%;border:none;
+  box-shadow:0 4px 20px rgba(180,36,100,.25);}
+#hbk{width:38px;height:38px;border-radius:50%;border:none;
   background:rgba(255,255,255,.18);display:flex;align-items:center;justify-content:center;
   cursor:pointer;font-size:22px;color:#fff;flex-shrink:0;transition:background .15s;}
 #hbk.hidden{visibility:hidden;pointer-events:none;}
 #hbk:active{background:rgba(255,255,255,.32);}
-#htw{flex:1;min-width:0;}
-.brand-wrap{display:flex;align-items:center;gap:9px;}
-#brand-logo{height:34px;width:34px;border-radius:8px;object-fit:cover;flex-shrink:0;
-  border:1.5px solid rgba(255,255,255,.25);}
-.brand-title-txt{font-family:"Nunito",sans-serif;font-size:18px;font-weight:900;
-  color:#fff;line-height:1;letter-spacing:-.3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-.brand-title-txt span{font-style:italic;color:rgba(255,255,255,.85);}
-.brand-sub-txt{font-size:11px;color:rgba(255,255,255,.75);font-weight:700;margin-top:2px;}
+#htw{flex:1;min-width:0;display:flex;justify-content:center;}
+/* Brand centred layout */
+.brand-wrap{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:0;}
+#brand-logo{max-height:52px;max-width:200px;object-fit:contain;flex-shrink:0;
+  filter:drop-shadow(0 2px 8px rgba(0,0,0,.22));transition:opacity .2s;}
+.brand-title-txt{font-family:"Nunito",sans-serif;font-size:20px;font-weight:900;
+  color:#fff;line-height:1;letter-spacing:-.5px;white-space:nowrap;text-align:center;}
+.brand-title-txt span{font-style:italic;color:rgba(255,255,255,.88);}
+.brand-sub-txt{font-size:11px;color:rgba(255,255,255,.7);font-weight:700;margin-top:3px;text-align:center;letter-spacing:.5px;text-transform:uppercase;}
+/* Sub-page title (non-dashboard) */
 #htc{font-family:"Nunito",sans-serif;font-size:17px;font-weight:800;color:#fff;
-  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-align:center;width:100%;}
+/* Logo shown on sub-pages - small watermark above title */
+#htc-logo{max-height:22px;max-width:90px;object-fit:contain;opacity:.85;display:block;margin:0 auto 3px;
+  filter:brightness(0) invert(1);}
 #hacts{display:flex;gap:6px;flex-shrink:0;}
-.hb{width:36px;height:36px;border-radius:50%;border:none;
+.hb{width:38px;height:38px;border-radius:50%;border:none;
   display:flex;align-items:center;justify-content:center;
   cursor:pointer;font-size:16px;transition:all .15s;flex-shrink:0;
   background:rgba(255,255,255,.2);color:#fff;}
@@ -739,11 +744,18 @@ function updateHeaderBrand(){
   const bizName=S.biz.biz||'';
   const isDefault=!bizName||bizName==='Supermom for Hire';
   if(isDefault){nameEl.innerHTML='Supermom <span>for Hire</span>';} else {nameEl.textContent=bizName;}
-  if(S.biz.logo){logoEl.src=S.biz.logo;logoEl.classList.remove('hidden');} else {logoEl.classList.add('hidden');}
+  if(S.biz.logo){
+    logoEl.src=S.biz.logo;
+    logoEl.classList.remove('hidden');
+    nameEl.style.display='none'; // logo is the brand — hide text
+  } else {
+    logoEl.classList.add('hidden');
+    nameEl.style.display=''; // show text wordmark centred
+  }
 }
 function handleLogoUpload(input){
   const file=input.files[0];if(!file)return;
-  if(file.size>500000){showToast('⚠️ Image too large — try a smaller file');return;}
+  if(file.size>2000000){showToast('⚠️ Image too large — try under 2MB');return;}
   const reader=new FileReader();
   reader.onload=e=>{
     S.biz.logo=e.target.result;
@@ -900,6 +912,7 @@ function updHeader(v){
   const bk=$('hbk'),ac=$('hacts'),bt=$('brand-title');
   ac.innerHTML='';bk.classList.add('hidden');
   const hc=$('htc');if(hc)hc.remove();
+  const hl=$('htc-logo');if(hl)hl.remove();
   bt.style.display='';
   const hb=(ic,fn)=>{const b=document.createElement('button');b.className='hb';b.textContent=ic;b.onclick=fn;return b;};
   if(v==='dashboard')ac.appendChild(hb('↺',loadAllData));
@@ -911,6 +924,12 @@ function updHeader(v){
 }
 function setHT(t){
   $('brand-title').style.display='none';
+  // Show small logo above page title on sub-pages if logo exists
+  if(S.biz&&S.biz.logo){
+    const li=document.createElement('img');
+    li.id='htc-logo';li.src=S.biz.logo;li.alt='';
+    $('htw').appendChild(li);
+  }
   const d=document.createElement('div');d.id='htc';d.textContent=t;$('htw').appendChild(d);
 }
 function updNav(v){document.querySelectorAll('.ni').forEach(n=>n.classList.toggle('active',n.dataset.v===v));}
