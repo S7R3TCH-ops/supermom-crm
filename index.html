@@ -50,32 +50,54 @@ body.modal-open{overflow:hidden;}
 .hidden{display:none!important;}
 
 /* HEADER */
-#header{min-height:var(--hdr-h);padding-top:env(safe-area-inset-top);
+/* ── HEADER ─────────────────────────────────────────────────────── */
+#header{
+  height:var(--hdr-h);
+  padding-top:env(safe-area-inset-top);
   background:linear-gradient(135deg,var(--pink) 0%,var(--pink-d) 100%);
-  display:flex;align-items:center;padding-left:var(--pad);
-  padding-right:var(--pad);gap:10px;flex-shrink:0;z-index:20;
-  box-shadow:0 4px 20px rgba(180,36,100,.25);}
+  position:relative; /* key: lets us absolutely centre the brand */
+  display:flex;align-items:center;
+  padding-left:var(--pad);padding-right:var(--pad);
+  flex-shrink:0;z-index:20;
+  box-shadow:0 4px 20px rgba(180,36,100,.28);}
+/* Back button — left slot */
 #hbk{width:38px;height:38px;border-radius:50%;border:none;
-  background:rgba(255,255,255,.18);display:flex;align-items:center;justify-content:center;
-  cursor:pointer;font-size:22px;color:#fff;flex-shrink:0;transition:background .15s;}
+  background:rgba(255,255,255,.2);display:flex;align-items:center;justify-content:center;
+  cursor:pointer;font-size:22px;color:#fff;flex-shrink:0;transition:background .15s;
+  position:relative;z-index:2;}
 #hbk.hidden{visibility:hidden;pointer-events:none;}
-#hbk:active{background:rgba(255,255,255,.32);}
-#htw{flex:1;min-width:0;display:flex;justify-content:center;}
-/* Brand centred layout */
-.brand-wrap{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:0;}
-#brand-logo{max-height:52px;max-width:200px;object-fit:contain;flex-shrink:0;
-  filter:drop-shadow(0 2px 8px rgba(0,0,0,.22));transition:opacity .2s;}
-.brand-title-txt{font-family:"Nunito",sans-serif;font-size:20px;font-weight:900;
-  color:#fff;line-height:1;letter-spacing:-.5px;white-space:nowrap;text-align:center;}
+#hbk:active{background:rgba(255,255,255,.35);}
+/* Centre slot — absolutely positioned so back/actions never push it */
+#htw{
+  position:absolute;left:50%;top:50%;
+  transform:translate(-50%,-50%);
+  margin-top:calc(env(safe-area-inset-top) / 2);
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  max-width:60%;pointer-events:none;}
+/* Brand wrap (dashboard / clients) */
+.brand-wrap{display:flex;flex-direction:column;align-items:center;gap:2px;}
+#brand-logo{
+  height:46px;       /* fixed height — always fills the header */
+  max-width:180px;
+  width:auto;
+  object-fit:contain;
+  filter:drop-shadow(0 2px 8px rgba(0,0,0,.25));
+  display:block;}
+.brand-title-txt{
+  font-family:"Nunito",sans-serif;font-size:19px;font-weight:900;
+  color:#fff;line-height:1;letter-spacing:-.4px;
+  white-space:nowrap;text-align:center;}
 .brand-title-txt span{font-style:italic;color:rgba(255,255,255,.88);}
-.brand-sub-txt{font-size:11px;color:rgba(255,255,255,.7);font-weight:700;margin-top:3px;text-align:center;letter-spacing:.5px;text-transform:uppercase;}
-/* Sub-page title (non-dashboard) */
-#htc{font-family:"Nunito",sans-serif;font-size:17px;font-weight:800;color:#fff;
-  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-align:center;width:100%;}
-/* Logo shown on sub-pages - small watermark above title */
-#htc-logo{max-height:22px;max-width:90px;object-fit:contain;opacity:.85;display:block;margin:0 auto 3px;
-  filter:brightness(0) invert(1);}
-#hacts{display:flex;gap:6px;flex-shrink:0;}
+/* Sub-page title */
+#htc{font-family:"Nunito",sans-serif;font-size:16px;font-weight:800;
+  color:#fff;white-space:nowrap;text-align:center;line-height:1.2;}
+/* Tiny logo above sub-page title */
+#htc-logo{
+  height:20px;width:auto;max-width:80px;
+  object-fit:contain;opacity:.9;display:block;margin:0 auto 4px;
+  filter:brightness(0) invert(1) drop-shadow(0 1px 3px rgba(0,0,0,.2));}
+/* Right slot — action buttons */
+#hacts{display:flex;gap:6px;flex-shrink:0;margin-left:auto;position:relative;z-index:2;}
 .hb{width:38px;height:38px;border-radius:50%;border:none;
   display:flex;align-items:center;justify-content:center;
   cursor:pointer;font-size:16px;transition:all .15s;flex-shrink:0;
@@ -954,7 +976,9 @@ function startAddClient(){
 function renderDash(){
   renderEarnBars();
   const tod=today();
-  const pend=S.financials.filter(f=>f.Status==='Pending');
+  // Only completed jobs count as owed — scheduled jobs haven't been done yet
+  const completedJobIds=new Set(S.jobs.filter(j=>j.Job_Status==='Completed').map(j=>j.Job_ID));
+  const pend=S.financials.filter(f=>f.Status==='Pending'&&completedJobIds.has(f.Job_ID));
   const allPaid=S.financials.filter(f=>f.Status==='Paid');
   const thisMonth=new Date().toISOString().slice(0,7);
   const paid=S.moneyFilter==='month'?allPaid.filter(f=>(f.Paid_Date||'').startsWith(thisMonth)):allPaid;
@@ -1206,7 +1230,7 @@ function renderCli(q=''){
   if(!cs.length){l.innerHTML='<div class="es"><div class="es-i">👥</div><div class="es-t">No clients found</div><div class="es-s">Tap + to add</div></div>';return;}
   l.innerHTML=cs.map(c=>{
     const cj=S.jobs.filter(j=>j.Client_ID===c.Client_ID);
-    const pc=cj.filter(j=>{const inv=getInv(j.Job_ID);return inv&&inv.Status==='Pending';}).length;
+    const pc=cj.filter(j=>j.Job_Status==='Completed'&&!isPaidJob(j)).length;
     const nxt=cj.filter(j=>j.Job_Status==='Scheduled'&&(j.Scheduled_Date)>='').sort((a,b)=>(a.Scheduled_Date||'').localeCompare(b.Scheduled_Date||''))[0];
     const pill=pc>0?`<span class="pill p-red">${pc} Unpaid</span>`:c.Status==='Lead'?'<span class="pill p-amb">Lead</span>':c.Status==='Inactive'?'<span class="pill p-grey">Inactive</span>':'<span class="pill p-green">Active</span>';
     return`<div class="cr" data-action="open-profile" data-cid="${esc(c.Client_ID)}">
@@ -1224,7 +1248,9 @@ function openProfile(cid){
   const c=getCli(cid);const cj=S.jobs.filter(j=>j.Client_ID===cid);
   const ci=S.financials.filter(f=>f.Client_ID===cid);
   const totPaid=ci.filter(f=>f.Status==='Paid').reduce((s,f)=>s+parseFloat(f.Amount||0),0);
-  const totOwed=ci.filter(f=>f.Status==='Pending').reduce((s,f)=>s+parseFloat(f.Amount||0),0);
+  // Only completed unpaid jobs count as owed — not future scheduled jobs
+  const totOwed=cj.filter(j=>j.Job_Status==='Completed'&&!isPaidJob(j))
+    .reduce((s,j)=>s+parseFloat(j.Total_Amount||0),0);
   $('p-av').textContent=inits(c);$('p-name').textContent=fullN(c);
   $('p-pills').innerHTML=
     (c.Status==='Lead'?'<span class="pill p-amb">🟡 Lead</span>':c.Status==='Inactive'?'<span class="pill p-grey">Inactive</span>':'<span class="pill p-green">✅ Active</span>')+
