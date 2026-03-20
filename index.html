@@ -2053,9 +2053,10 @@ async function submitJob(){
     Photo_Links:'',Created_Date:today(),PrePaid_Reason:''};
   S.jobs.push(data);
   const c=S.clients.find(x=>x.Client_ID===cid);if(c&&c.Status==='Lead')c.Status='Active';
-  // 1. Update UI instantly
   showToast('📅 Job booked!');
+  // Navigate back and re-render the correct view immediately
   if(S.stack.includes('add-client')){S.stack=[];openProfile(cid);}
+  else if(S.stack.includes('profile')){goBack();openProfile(cid);}
   else{goBack();renderDash();}
 
   // 2. Release button lock
@@ -2210,5 +2211,3 @@ function showToast(m){const t=$('toast');t.textContent=m;t.classList.add('show')
 </script>
 </body>
 </html>
-
-  
