@@ -799,16 +799,25 @@ function updateHeaderBrand(){
 }
 function handleLogoUpload(input){
   const file=input.files[0];if(!file)return;
-  if(file.size>2000000){showToast('⚠️ Image too large — try under 2MB');return;}
   const reader=new FileReader();
   reader.onload=e=>{
-    S.biz.logo=e.target.result;
-    syncBizUI();updateHeaderBrand();
-    showToast('✓ Logo ready — tap Save to keep it');
+    const img = new Image();
+    img.onload = () => {
+      // Compress image to a max of 250px wide/tall to keep payload tiny for Google Apps Script
+      const cvs = document.createElement('canvas');
+      const max = 250;
+      let w = img.width, h = img.height;
+      if(w > max || h > max) { const ratio = Math.min(max/w, max/h); w *= ratio; h *= ratio; }
+      cvs.width = w; cvs.height = h;
+      cvs.getContext('2d').drawImage(img, 0, 0, w, h);
+      S.biz.logo = cvs.toDataURL('image/webp', 0.8); // Converts to highly compressed WebP Base64
+      syncBizUI(); updateHeaderBrand();
+      showToast('✓ Logo ready — tap Save to keep it');
+    };
+    img.src = e.target.result;
   };
   reader.readAsDataURL(file);
-}
-function removeLogo(){
+}function removeLogo(){
   S.biz.logo='';
   syncBizUI();updateHeaderBrand();
   const inp=$('logo-file-inp');if(inp)inp.value='';
