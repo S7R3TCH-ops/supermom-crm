@@ -77,25 +77,26 @@ body.modal-open{overflow:hidden;}
 /* Brand wrap (dashboard / clients) */
 .brand-wrap{display:flex;flex-direction:column;align-items:center;gap:2px;}
 #brand-logo{
-  /* Target: 1200x300px landscape PNG with transparent background
-     At max-width:220px it renders at ~55px tall — fills the header perfectly.
-     JS still applies smart sizing on load for any other format. */
   max-width:260px;
   max-height:62px;
-  width:auto;
-  height:auto;
+  width:auto;height:auto;
   object-fit:contain;
   filter:drop-shadow(0 2px 10px rgba(0,0,0,.28));
   display:block;
-  transition:opacity .2s;}
+  transition:all .2s;}
+/* Smaller logo on sub-pages so title fits below */
+#brand-logo.logo-sm{
+  max-height:32px;
+  max-width:140px;}
 .brand-title-txt{
   font-family:"Nunito",sans-serif;font-size:19px;font-weight:900;
   color:#fff;line-height:1;letter-spacing:-.4px;
   white-space:nowrap;text-align:center;}
 .brand-title-txt span{font-style:italic;color:rgba(255,255,255,.88);}
-/* Sub-page title */
-#htc{font-family:"Nunito",sans-serif;font-size:16px;font-weight:800;
-  color:#fff;white-space:nowrap;text-align:center;line-height:1.2;}
+/* Sub-page title — sits below small logo */
+#htc{font-family:"Nunito",sans-serif;font-size:13px;font-weight:700;
+  color:rgba(255,255,255,.9);white-space:nowrap;text-align:center;
+  line-height:1;margin-top:3px;letter-spacing:.3px;text-transform:uppercase;}
 /* Sub-page logo watermark removed — too small to be legible at any reasonable size.
    Sub-pages show clean page title only. Logo lives on the main header (dashboard/clients). */
 /* Right slot — action buttons */
@@ -686,6 +687,9 @@ let S={
 
 const $=id=>document.getElementById(id);
 let _isSaving = false;
+// Track jobs/clients deleted locally but not yet confirmed by GAS
+// Prevents the ↺ refresh button from bringing them back during the write window
+const _pendingDeletes={jobs:new Set(),clients:new Set()};
 
 const esc=s=>{
   if(s==null)return'';
@@ -868,7 +872,10 @@ async function loadAllData(){
   
   const r=await gasCall({action:'getAllData'});
   if(r.success){
-    S.clients=r.clients||[];S.jobs=r.jobs||[];S.financials=r.financials||[];
+    // Filter out any jobs/clients pending GAS delete confirmation
+    S.clients=(r.clients||[]).filter(c=>!_pendingDeletes.clients.has(c.Client_ID));
+    S.jobs=(r.jobs||[]).filter(j=>!_pendingDeletes.jobs.has(j.Job_ID));
+    S.financials=(r.financials||[]).filter(f=>!_pendingDeletes.jobs.has(f.Job_ID));
     if(r.lists)S.lists=r.lists;
     if(r.biz){
       const prevLogo=S.biz.logo; // preserve local logo if GAS has none yet
@@ -953,22 +960,29 @@ function goBack(){
   }else navTo('dashboard');
 }
 function updHeader(v){
-  const bk=$('hbk'),ac=$('hacts'),bt=$('brand-title');
+  const bk=$('hbk'),ac=$('hacts');
   ac.innerHTML='';bk.classList.add('hidden');
   const hc=$('htc');if(hc)hc.remove();
-  // (sub-page logo watermark removed — no htc-logo element to clean up)
-  bt.style.display='';
   const hb=(ic,fn)=>{const b=document.createElement('button');b.className='hb';b.textContent=ic;b.onclick=fn;return b;};
+  const isDash=v==='dashboard';
+  // Logo always visible — full size on dashboard, small on sub-pages
+  const logoEl=$('brand-logo');
+  const nameEl=$('brand-name-txt');
+  if(logoEl){
+    if(isDash){logoEl.classList.remove('logo-sm');}
+    else{logoEl.classList.add('logo-sm');}
+  }
+  // Show brand-title (logo+wordmark) on ALL pages
+  $('brand-title').style.display='';
   if(v==='dashboard')ac.appendChild(hb('↺',loadAllData));
   if(v==='clients')  {bk.classList.remove('hidden');setHT('Clients');ac.appendChild(hb('+',startAddClient));}
   if(v==='add-client'){bk.classList.remove('hidden');setHT(S.editCli?'Edit Client':'New Client');}
   if(v==='book-job') {bk.classList.remove('hidden');setHT('Book a Job');}
-  if(v==='profile')  {bk.classList.remove('hidden');ac.appendChild(hb('✏️',editClient));ac.appendChild(hb('+',openBookJobForClient));}
+  if(v==='profile')  {bk.classList.remove('hidden');setHT(S.curCli?fullN(getCli(S.curCli)):'Client');ac.appendChild(hb('✏️',editClient));ac.appendChild(hb('+',openBookJobForClient));}
   if(v==='admin')    {bk.classList.remove('hidden');setHT('Admin & Settings');renderAdmin();syncBizUI();}
 }
 function setHT(t){
-  // Sub-pages: hide brand logo, show clean page title centred
-  $('brand-title').style.display='none';
+  // Add page title BELOW the logo — logo stays visible on all pages
   const d=document.createElement('div');d.id='htc';d.textContent=t;$('htw').appendChild(d);
 }
 function updNav(v){document.querySelectorAll('.ni').forEach(n=>n.classList.toggle('active',n.dataset.v===v));}
@@ -1857,7 +1871,11 @@ async function deleteJob(){
   // 4. Tell GAS to soft-delete in background — NO loadAllData() after
   // loadAllData was re-fetching from GAS before Is_Deleted write was committed,
   // causing the job to reappear. Local state after filter IS the truth.
-  if(!S.isDemo) gasCall({action:'deleteJob',jobId:jid});
+  // Track as pending so ↺ refresh can't bring it back before GAS write completes
+  _pendingDeletes.jobs.add(jid);
+  if(!S.isDemo) gasCall({action:'deleteJob',jobId:jid}).then(()=>{
+    _pendingDeletes.jobs.delete(jid); // confirmed — no longer needed
+  });
 }
 
 async function markRevRequested(jid){
@@ -1977,8 +1995,11 @@ async function deleteClient(){
   try{localStorage.removeItem('smhq_cache');}catch(e){}
   // Navigate and render immediately — local state is authoritative
   navTo('clients');renderCli();showToast('🗑️ Client deleted');
-  // Fire-and-forget to GAS — no loadAllData() to avoid race condition
-  if(!S.isDemo) gasCall({action:'deleteClient',clientId:cid});
+  // Track as pending so ↺ refresh can't bring it back before GAS write completes
+  _pendingDeletes.clients.add(cid);
+  if(!S.isDemo) gasCall({action:'deleteClient',clientId:cid}).then(()=>{
+    _pendingDeletes.clients.delete(cid);
+  });
 }
 
 function openEditNotes(){
