@@ -1847,19 +1847,17 @@ function confirmDeleteJob(){
 }
 async function deleteJob(){
   closeMo('m-del');const jid=S.jobModal;
-  // Remove from local state immediately for instant UI feedback
+  // 1. Remove from ALL local state immediately
   S.jobs=S.jobs.filter(x=>x.Job_ID!==jid);
   S.financials=S.financials.filter(x=>x.Job_ID!==jid);
-  // Wipe cache so stale data can never resurface
+  // 2. Wipe cache — deleted job must never come back from localStorage
   try{localStorage.removeItem('smhq_cache');}catch(e){}
-  // Re-render immediately from clean local state
+  // 3. Re-render immediately — local state is authoritative
   refreshData();showToast('🗑️ Job deleted');
-  // Tell GAS to soft-delete, then reload from server to confirm clean state
-  // This prevents the job reappearing if loadAllData runs before GAS finishes
-  if(!S.isDemo){
-    await gasCall({action:'deleteJob',jobId:jid});
-    await loadAllData(); // confirmed server state — job is gone for good
-  }
+  // 4. Tell GAS to soft-delete in background — NO loadAllData() after
+  // loadAllData was re-fetching from GAS before Is_Deleted write was committed,
+  // causing the job to reappear. Local state after filter IS the truth.
+  if(!S.isDemo) gasCall({action:'deleteJob',jobId:jid});
 }
 
 async function markRevRequested(jid){
@@ -1977,13 +1975,10 @@ async function deleteClient(){
   S.jobs=S.jobs.filter(j=>j.Client_ID!==cid);
   S.clients=S.clients.filter(c=>c.Client_ID!==cid);
   try{localStorage.removeItem('smhq_cache');}catch(e){}
-  // Navigate and render immediately from clean local state
+  // Navigate and render immediately — local state is authoritative
   navTo('clients');renderCli();showToast('🗑️ Client deleted');
-  // Confirm with server then reload to get authoritative clean state
-  if(!S.isDemo){
-    await gasCall({action:'deleteClient',clientId:cid});
-    await loadAllData();
-  }
+  // Fire-and-forget to GAS — no loadAllData() to avoid race condition
+  if(!S.isDemo) gasCall({action:'deleteClient',clientId:cid});
 }
 
 function openEditNotes(){
