@@ -216,28 +216,28 @@ function appendRow(sheetName, obj) {
 function audit(action, clientId, jobId, paymentId, field, oldVal, newVal, notes) {
   try {
     const s = sh(SHEET.AUDIT);
-    if (!s) return;
-    s.appendRow([
-      uid('LOG'),       // Log_ID
-      now(),            // Timestamp
-      clientId  || '',  // Client_ID
-      jobId     || '',  // Job_ID
-      paymentId || '',  // Payment_ID
-      action,           // Action  e.g. ADD_JOB, COMPLETE_JOB, DELETE_CLIENT
-      '',               // Entity  (reserved for AppSheet virtual columns)
-      field     || '',  // Changed_Field
-      oldVal    || '',  // Old_Value
-      newVal    || '',  // New_Value
-      'app',            // Source
-      whoami(),         // Worker_ID — actual script owner email
-      '',               // Session_ID (reserved)
-      notes     || '',  // Notes
-    ]);
+    if (!s) { Logger.log('Audit sheet missing'); return; }
+    
+    appendRow(SHEET.AUDIT, {
+      Log_ID: uid('LOG'),
+      Timestamp: now(),
+      Client_ID: clientId || '',
+      Job_ID: jobId || '',
+      Payment_ID: paymentId || '',
+      Action: action,
+      Entity: '',
+      Changed_Field: field || '',
+      Old_Value: oldVal || '',
+      New_Value: newVal || '',
+      Source: 'app',
+      Worker_ID: whoami(),
+      Session_ID: '',
+      Notes: notes || ''
+    });
   } catch(e) {
     Logger.log('Audit write failed: ' + e.message);
   }
 }
-
 // ── CLIENT STATS ─────────────────────────────────────────────
 // Keeps computed columns in 01_CLIENTS fresh for AppSheet and Looker Studio
 
@@ -266,60 +266,6 @@ function recalcClientStats(clientId) {
     Last_Service_Date:    completionDates.length ? completionDates[completionDates.length - 1] : '',
     Last_Modified_Date:   now(),
   });
-}
-
-// updateAllClientStats: batch version — pre-indexes all data, walks clients sheet
-// ONCE, writes all updates in one pass. Called at end of getAllData only.
-// This is O(n) vs recalcClientStats which is O(n²) for bulk updates.
-function updateAllClientStats(clients, jobs, payments) {
-  const s = sh(SHEET.CLIENTS);
-  if (!s) return;
-  const raw     = s.getDataRange().getValues();
-  const headers = raw[0].map(String);
-
-  // Build column index map once
-  const col = {};
-  ['Client_ID','Total_Jobs','Total_Lifetime_Value',
-   'First_Service_Date','Last_Service_Date','Last_Modified_Date'].forEach(h => {
-    col[h] = headers.indexOf(h);
-  });
-
-  // Pre-index jobs and payments by client for O(1) lookup
-  const jobsByClient = {};
-  jobs.forEach(j => {
-    if (!jobsByClient[j.Client_ID]) jobsByClient[j.Client_ID] = [];
-    jobsByClient[j.Client_ID].push(j);
-  });
-  const paidByClient = {};
-  payments.forEach(p => {
-    if (!paidByClient[p.Client_ID]) paidByClient[p.Client_ID] = 0;
-    paidByClient[p.Client_ID] += parseFloat(p.Amount || 0);
-  });
-
-  // Walk sheet once, update rows that need changes
-  for (let i = 1; i < raw.length; i++) {
-    const row      = raw[i];
-    const clientId = String(row[col['Client_ID']] || '');
-    if (!clientId || row.every(c => c === '' || c === null)) continue;
-
-    const cJobs    = (jobsByClient[clientId] || [])
-      .filter(j => j.Job_Status !== 'Cancelled' && j.Is_Deleted !== 'TRUE');
-    const totalPaid = paidByClient[clientId] || 0;
-    const doneDate  = cJobs
-      .filter(j => j.Job_Status === 'Completed' && j.Completion_Date)
-      .map(j => j.Completion_Date).sort();
-
-    const newRow = row.slice();
-    if (col['Total_Jobs']           > -1) newRow[col['Total_Jobs']]           = String(cJobs.length);
-    if (col['Total_Lifetime_Value'] > -1) newRow[col['Total_Lifetime_Value']] = totalPaid.toFixed(2);
-    if (col['Last_Service_Date']    > -1) newRow[col['Last_Service_Date']]    = doneDate.length ? doneDate[doneDate.length-1] : '';
-    if (col['Last_Modified_Date']   > -1) newRow[col['Last_Modified_Date']]   = now();
-    // Only set First_Service_Date if not already set
-    if (col['First_Service_Date'] > -1 && doneDate.length && !String(row[col['First_Service_Date']])) {
-      newRow[col['First_Service_Date']] = doneDate[0];
-    }
-    s.getRange(i + 1, 1, 1, newRow.length).setValues([newRow]);
-  }
 }
 
 // ── GOOGLE CALENDAR SYNC ─────────────────────────────────────
@@ -479,12 +425,6 @@ function getAllData() {
   let servicePrices = {};
   try { servicePrices = JSON.parse(c.service_prices || '{}'); } catch(e) {}
 
-  // Batch-update all client computed stats (Total_Jobs, Total_Lifetime_Value, etc.)
-  // Done here rather than per-mutation to keep writes fast and avoid cascading reads.
-  try { updateAllClientStats(clients, jobs, payments); } catch(e) {
-    Logger.log('updateAllClientStats failed: ' + e.message);
-  }
-
   return {
     success: true,
     clients,
@@ -497,6 +437,7 @@ function getAllData() {
       hst_num:        c.hst_number  || '',
       tax_rate:       parseFloat(c.tax_rate    || 0.13),
       service_prices: servicePrices,
+      logo:           c.logo        || '', // base64 PNG — syncs logo across all devices
     },
     lists: {
       services:             getList('services'),
@@ -529,6 +470,7 @@ function updateBizConfig(p) {
   if (p.tax_rate      !== undefined) setC('tax_rate',        p.tax_rate);
   if (p.calendar_id   !== undefined) setC('calendar_id',     p.calendar_id);
   if (p.service_prices !== undefined) setC('service_prices', JSON.stringify(p.service_prices));
+  if (p.logo          !== undefined) setC('logo',            p.logo); // base64 PNG — syncs across devices
 
   clearConfigCache();
   audit('UPDATE_CONFIG', '', '', '', 'biz_config', '', '', JSON.stringify(p));
@@ -970,15 +912,10 @@ function deleteJob(p) {
     Last_Modified_Date:now(),
   });
 
-  if (job && job.Event_ID) {
-    try {
-      const cal = getCalendar();
-      if (cal) cal.getEventById(job.Event_ID).deleteEvent();
-    } catch(e) {}
-  }
-
   audit('DELETE_JOB', job ? job.Client_ID : '', p.jobId, '', '', '', 'DELETED', '');
-  return { success: true };
+  
+  // Return flag so doPost runs calendar sync OUTSIDE the script lock
+  return { success: true, _syncCalendar: p.jobId };
 }
 
 function cancelJob(p) {
@@ -997,19 +934,11 @@ function cancelJob(p) {
     Last_Modified_Date:now(),
   });
 
-  if (job.Event_ID) {
-    try {
-      const cal = getCalendar();
-      if (cal) {
-        cal.getEventById(job.Event_ID).deleteEvent();
-        updateRow(SHEET.JOBS, 'Job_ID', p.jobId, { Event_ID: '' });
-      }
-    } catch(e) {}
-  }
-
   audit('CANCEL_JOB', job.Client_ID, p.jobId, '', 'Job_Status',
     'Scheduled', 'Cancelled', p.reason || '');
-  return { success: true };
+    
+  // Return flag so doPost runs calendar sync OUTSIDE the script lock
+  return { success: true, _syncCalendar: p.jobId };
 }
 
 // ── PAYMENT HELPER ───────────────────────────────────────────
