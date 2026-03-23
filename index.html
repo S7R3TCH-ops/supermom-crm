@@ -24,7 +24,7 @@
   --purple: #6941C6; --purple-s: #F9F5FF; --purple-b: #E9D7FE;
   --orange: #C4320A; --orange-s: #FFF4ED; --orange-b: #FDDCAB;
   --nav-h: calc(60px + env(safe-area-inset-bottom));
-  --hdr-h: calc(76px + env(safe-area-inset-top));
+  --hdr-h: calc(84px + env(safe-area-inset-top));
   --pad: max(14px, env(safe-area-inset-left));
   --r: 16px; --rsm: 12px;
   --sh: 0 2px 12px rgba(0,0,0,0.04);
@@ -77,13 +77,15 @@ body.modal-open{overflow:hidden;}
 /* Brand wrap (dashboard / clients) */
 .brand-wrap{display:flex;flex-direction:column;align-items:center;gap:2px;}
 #brand-logo{
-  /* Dimensions set dynamically by JS based on logo aspect ratio */
-  max-height:54px;
-  max-width:200px;
+  /* Target: 1200x300px landscape PNG with transparent background
+     At max-width:220px it renders at ~55px tall — fills the header perfectly.
+     JS still applies smart sizing on load for any other format. */
+  max-width:260px;
+  max-height:62px;
   width:auto;
   height:auto;
   object-fit:contain;
-  filter:drop-shadow(0 2px 8px rgba(0,0,0,.22));
+  filter:drop-shadow(0 2px 10px rgba(0,0,0,.28));
   display:block;
   transition:opacity .2s;}
 .brand-title-txt{
@@ -94,11 +96,8 @@ body.modal-open{overflow:hidden;}
 /* Sub-page title */
 #htc{font-family:"Nunito",sans-serif;font-size:16px;font-weight:800;
   color:#fff;white-space:nowrap;text-align:center;line-height:1.2;}
-/* Tiny logo above sub-page title */
-#htc-logo{
-  height:20px;width:auto;max-width:80px;
-  object-fit:contain;opacity:.9;display:block;margin:0 auto 4px;
-  filter:brightness(0) invert(1) drop-shadow(0 1px 3px rgba(0,0,0,.2));}
+/* Sub-page logo watermark removed — too small to be legible at any reasonable size.
+   Sub-pages show clean page title only. Logo lives on the main header (dashboard/clients). */
 /* Right slot — action buttons */
 #hacts{display:flex;gap:6px;flex-shrink:0;margin-left:auto;position:relative;z-index:2;}
 .hb{width:38px;height:38px;border-radius:50%;border:none;
@@ -815,9 +814,8 @@ function saveBizConfig(){
   S.biz={biz:$('cfg-biz').value.trim()||'Supermom for Hire',owner:$('cfg-owner').value.trim()||'Sandra',rate:parseFloat($('cfg-rate').value)||50,hst_num:$('cfg-hst').value.trim(),tax_rate:parseFloat(S.biz.tax_rate)||0.13,service_prices:S.biz.service_prices||{},logo:S.biz.logo||''};
   try{localStorage.setItem('smhq_biz',JSON.stringify(S.biz));}catch(e){}
   if(!S.isDemo){
-    const safePayload=Object.assign({},S.biz);
-    delete safePayload.logo;
-    gasCall({action:'updateBizConfig',...safePayload});
+    // Include logo so it syncs across all devices via GAS/CONFIG
+    gasCall({action:'updateBizConfig',...S.biz});
   }
   const pb=$('pr-h');if(pb)pb.textContent=`⏱ Hourly ($${S.biz.rate}/hr)`;
   updateHeaderBrand();calc();showToast('✓ Business info saved');
@@ -872,7 +870,12 @@ async function loadAllData(){
   if(r.success){
     S.clients=r.clients||[];S.jobs=r.jobs||[];S.financials=r.financials||[];
     if(r.lists)S.lists=r.lists;
-    if(r.biz)S.biz=Object.assign(S.biz,r.biz);
+    if(r.biz){
+      const prevLogo=S.biz.logo; // preserve local logo if GAS has none yet
+      S.biz=Object.assign(S.biz,r.biz);
+      if(!S.biz.logo&&prevLogo)S.biz.logo=prevLogo; // fallback to local if not yet synced
+      updateHeaderBrand(); // re-render with logo from server
+    }
     try{localStorage.setItem('smhq_cache',JSON.stringify({clients:S.clients,jobs:S.jobs,financials:S.financials,lists:S.lists}));}catch(e){}
     refreshAll();healLeads();
   }
@@ -953,24 +956,19 @@ function updHeader(v){
   const bk=$('hbk'),ac=$('hacts'),bt=$('brand-title');
   ac.innerHTML='';bk.classList.add('hidden');
   const hc=$('htc');if(hc)hc.remove();
-  const hl=$('htc-logo');if(hl)hl.remove();
+  // (sub-page logo watermark removed — no htc-logo element to clean up)
   bt.style.display='';
   const hb=(ic,fn)=>{const b=document.createElement('button');b.className='hb';b.textContent=ic;b.onclick=fn;return b;};
   if(v==='dashboard')ac.appendChild(hb('↺',loadAllData));
-  if(v==='clients')  ac.appendChild(hb('+',startAddClient));
+  if(v==='clients')  {bk.classList.remove('hidden');setHT('Clients');ac.appendChild(hb('+',startAddClient));}
   if(v==='add-client'){bk.classList.remove('hidden');setHT(S.editCli?'Edit Client':'New Client');}
   if(v==='book-job') {bk.classList.remove('hidden');setHT('Book a Job');}
   if(v==='profile')  {bk.classList.remove('hidden');ac.appendChild(hb('✏️',editClient));ac.appendChild(hb('+',openBookJobForClient));}
   if(v==='admin')    {bk.classList.remove('hidden');setHT('Admin & Settings');renderAdmin();syncBizUI();}
 }
 function setHT(t){
+  // Sub-pages: hide brand logo, show clean page title centred
   $('brand-title').style.display='none';
-  // Show small logo above page title on sub-pages if logo exists
-  if(S.biz&&S.biz.logo){
-    const li=document.createElement('img');
-    li.id='htc-logo';li.src=S.biz.logo;li.alt='';
-    $('htw').appendChild(li);
-  }
   const d=document.createElement('div');d.id='htc';d.textContent=t;$('htw').appendChild(d);
 }
 function updNav(v){document.querySelectorAll('.ni').forEach(n=>n.classList.toggle('active',n.dataset.v===v));}
@@ -1682,6 +1680,7 @@ function openJobModal(jid){
       </div>
       ${!isPaid?`<div class="fg"><label class="fl">Payment Method</label><select class="fs" id="je-pm">${mOpts}</select></div><button class="btn b-g mb8" onclick="submitJobEdit(this, true)">💰 Mark as Paid</button>`:''}
       <button class="btn b-s mb8" onclick="openJobModalEdit()">✏️ Edit This Job</button>
+      <button class="btn b-r mb8" onclick="confirmDeleteJob()">🗑️ Delete Job</button>
       <button class="btn b-s" onclick="closeMo('m-job')">Close</button>`;
   } else {
     $('m-job-body').innerHTML=`
@@ -1848,11 +1847,19 @@ function confirmDeleteJob(){
 }
 async function deleteJob(){
   closeMo('m-del');const jid=S.jobModal;
-  S.jobs=S.jobs.filter(x=>x.Job_ID!==jid);S.financials=S.financials.filter(x=>x.Job_ID!==jid);
-  // Clear cache immediately so deleted job never comes back from localStorage
+  // Remove from local state immediately for instant UI feedback
+  S.jobs=S.jobs.filter(x=>x.Job_ID!==jid);
+  S.financials=S.financials.filter(x=>x.Job_ID!==jid);
+  // Wipe cache so stale data can never resurface
   try{localStorage.removeItem('smhq_cache');}catch(e){}
-  if(!S.isDemo)await gasCall({action:'deleteJob',jobId:jid});
+  // Re-render immediately from clean local state
   refreshData();showToast('🗑️ Job deleted');
+  // Tell GAS to soft-delete, then reload from server to confirm clean state
+  // This prevents the job reappearing if loadAllData runs before GAS finishes
+  if(!S.isDemo){
+    await gasCall({action:'deleteJob',jobId:jid});
+    await loadAllData(); // confirmed server state — job is gone for good
+  }
 }
 
 async function markRevRequested(jid){
@@ -1965,13 +1972,18 @@ function confirmDeleteClient(){
 }
 async function deleteClient(){
   closeMo('m-del');const cid=S.curCli;
+  // Remove from local state immediately
   S.jobs.filter(j=>j.Client_ID===cid).forEach(j=>{S.financials=S.financials.filter(f=>f.Job_ID!==j.Job_ID);});
   S.jobs=S.jobs.filter(j=>j.Client_ID!==cid);
   S.clients=S.clients.filter(c=>c.Client_ID!==cid);
-  // Clear cache immediately so deleted client never comes back from localStorage
   try{localStorage.removeItem('smhq_cache');}catch(e){}
-  if(!S.isDemo)await gasCall({action:'deleteClient',clientId:cid});
-  showToast('🗑️ Client deleted');navTo('clients');renderCli();
+  // Navigate and render immediately from clean local state
+  navTo('clients');renderCli();showToast('🗑️ Client deleted');
+  // Confirm with server then reload to get authoritative clean state
+  if(!S.isDemo){
+    await gasCall({action:'deleteClient',clientId:cid});
+    await loadAllData();
+  }
 }
 
 function openEditNotes(){
@@ -2069,6 +2081,9 @@ function setPrice(t){
   S.priceType=t;$('pr-h')?.classList.toggle('on',t==='Hourly');$('pr-f')?.classList.toggle('on',t==='Flat');
   if($('bj-hrs-g'))$('bj-hrs-g').style.display=t==='Hourly'?'':'none';
   if($('bj-flat-g'))$('bj-flat-g').style.display=t==='Flat'?'':'none';
+  // Hide the saved-price hint when user manually overrides pricing type
+  // It only makes sense when the service is first selected and auto-fills
+  const hint=$('svc-price-hint');if(hint)hint.style.display='none';
   calc();
 }
 function calc(){
@@ -2131,14 +2146,12 @@ async function submitJob(){
   if(!S.isDemo){
     gasCall({action:'addJob',...data}).then(r=>{
       if(r&&r.Job_ID){
-        // Update the temp ID in local array
+        // Update temp ID with server-confirmed ID — no loadAllData() here
+        // loadAllData() after background calls was overwriting deletes and causing ghost jobs
         const idx=S.jobs.findIndex(x=>x.Job_ID===data.Job_ID);
         if(idx!==-1)S.jobs[idx].Job_ID=r.Job_ID;
         data.Job_ID=r.Job_ID;
       }
-      // Silent reload from server — replaces local state with clean server version
-      // preventing any local/server duplicates showing on next refresh
-      loadAllData();
     });
   }
 }
