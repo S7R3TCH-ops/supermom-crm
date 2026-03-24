@@ -1825,78 +1825,92 @@ function jeCalc(){
   preview.innerHTML=html;
 }
 async function submitJobEdit(btn, markPaid=false){
-  if(_isSaving)return;_isSaving=true;
-  const origText = btn ? btn.textContent : '';
+  if(_isSaving)return;
+  _isSaving=true;
+  const origText = btn ? btn.textContent : '💾 Save Changes';
   if(btn){btn.disabled=true;btn.textContent='Saving...';}
   
-  const jid=S.jobModal;
-  const j=S.jobs.find(x=>x.Job_ID===jid);
-  if(!j) { _isSaving=false; return; }
+  try {
+    const jid=S.jobModal;
+    const j=S.jobs.find(x=>x.Job_ID===jid);
+    if(!j) throw new Error("Job not found");
 
-  // Detect which hours input is on screen
-  const estHrsInput = $('je-est-hrs');
-  const actHrsInput = $('je-hrs');s
-  const estHrs = estHrsInput ? estHrsInput.value : '';
-  const actHrs = actHrsInput ? actHrsInput.value : '';
+    // Capture inputs
+    const svc = $('je-svc')?.value || '';
+    const date = $('je-date')?.value || '';
+    const time = $('je-time')?.value || '';
+    const notes = $('je-notes')?.value.trim() || '';
+    const comp = $('je-comp')?.value.trim() || '';
+    const actHrs = $('je-hrs')?.value || '';
+    const estHrs = $('je-est-hrs')?.value || '';
+    const photos = $('je-photos')?.value.trim() || '';
+    const revStatus = $('je-rev')?.value || '';
+    const method = $('je-pm')?.value || 'Cash';
+    const addCost = $('je-addcost')?.value || '0';
+    const addCostNotes = $('je-addcost-notes')?.value.trim() || '';
+    const flatRate = $('je-flat')?.value || '';
+    const surcharge = $('je-sur')?.value || '';
+    const isFlat = $('je-pr-f')?.classList.contains('on');
+    const pType = isFlat ? 'Flat' : 'Hourly';
 
-  const svc=$('je-svc')?.value||'';
-  const date=$('je-date')?.value||'';
-  const time=$('je-time')?.value||'';
-  const notes=$('je-notes')?.value.trim()||'';
-  const comp=$('je-comp')?.value.trim()||'';
-  const photos=$('je-photos')?.value.trim()||'';
-  const revStatus=$('je-rev')?.value||'';
-  const method=$('je-pm')?.value||'Cash';
-  const addCost=$('je-addcost')?.value||'0';
-  const addCostNotes=$('je-addcost-notes')?.value.trim()||'';
-  const flatRate=$('je-flat')?.value||'';
-  const surcharge=$('je-sur')?.value||'';
-  
-  // Determine pricing type from the toggle buttons
-  const isFlat=$('je-pr-f')?.classList.contains('on');
-  const pType = isFlat ? 'Flat' : (j.Pricing_Type || 'Hourly');
+    closeMo('m-job');
 
-  closeMo('m-job');
-
-  // Update local state immediately (Optimistic)
-  Object.assign(j, {
-    Service: svc, Scheduled_Date: date, Time: time, Job_Notes: notes,
-    Completion_Notes: comp || j.Completion_Notes, 
-    Actual_Hours: actHrs || j.Actual_Hours,
-    Estimated_Hours: estHrs || j.Estimated_Hours,
-    Pricing_Type: pType,
-    Flat_Rate: flatRate || j.Flat_Rate,
-    Surcharge: surcharge || j.Surcharge,
-    Additional_Cost: addCost,
-    Additional_Cost_Notes: addCostNotes,
-    Review_Status: revStatus || j.Review_Status,
-    Follow_Up: S.followUp
-  });
-  if(markPaid){ j.Payment_Status='Paid'; j.Payment_Method=method; }
-
-  if(!S.isDemo){
-    await gasCall({
-      action:'updateJobDetails',
-      jobId:jid,
-      svc, date, time, notes, 
-      comp: comp || undefined, 
-      hrs: actHrs || undefined, 
-      photos, revStatus,
-      followUp:S.followUp,
-      markPaid, method,
-      additionalCost: addCost,
-      additionalCostNotes: addCostNotes,
-      estimatedHours: estHrs,
-      flatRate: flatRate,
-      surcharge: surcharge,
-      pricingType: pType
+    // Update local state (Optimistic UI)
+    // Note: Using uppercase 'S' for global state
+    Object.assign(j, {
+      Service: svc, 
+      Scheduled_Date: date, 
+      Time: time, 
+      Job_Notes: notes,
+      Completion_Notes: comp || j.Completion_Notes, 
+      Actual_Hours: actHrs || j.Actual_Hours,
+      Estimated_Hours: estHrs || j.Estimated_Hours,
+      Pricing_Type: pType,
+      Flat_Rate: flatRate || j.Flat_Rate,
+      Surcharge: surcharge || j.Surcharge,
+      Additional_Cost: addCost,
+      Additional_Cost_Notes: addCostNotes,
+      Review_Status: revStatus || j.Review_Status,
+      Follow_Up: S.followUp 
     });
+    
+    if(markPaid){ j.Payment_Status='Paid'; j.Payment_Method=method; }
+
+    if(!S.isDemo){
+      await gasCall({
+        action: 'updateJobDetails',
+        jobId: jid,
+        svc: svc, 
+        date: date, 
+        time: time, 
+        notes: notes, 
+        comp: comp, 
+        hrs: actHrs, 
+        photos: photos, 
+        revStatus: revStatus,
+        followUp: S.followUp,
+        markPaid: markPaid, 
+        method: method,
+        additionalCost: addCost,
+        additionalCostNotes: addCostNotes,
+        estimatedHours: estHrs,
+        flatRate: flatRate,
+        surcharge: surcharge,
+        pricingType: pType
+      });
+    }
+    
+    try{localStorage.removeItem('smhq_cache');}catch(e){}
+    refreshData();
+    showToast(markPaid ? '💰 Saved + paid' : '✓ Job updated');
+
+  } catch (err) {
+    console.error("Save Error:", err);
+    showToast("⚠️ Error saving changes");
+  } finally {
+    _isSaving=false;
+    if(btn){btn.disabled=false;btn.textContent=origText;}
   }
-  
-  try{localStorage.removeItem('smhq_cache');}catch(e){}
-  refreshData();
-  showToast(markPaid?'💰 Saved + paid':'✓ Job updated');
-  _isSaving=false;
 }
 function confirmDeleteJob(){
   closeMo('m-job');const j=getJob(S.jobModal);
