@@ -1171,7 +1171,7 @@ function dsec(lid,sid,jobs,type){
 
 function jrHTML(j,type){
   const c=getCli(j.Client_ID);
-  const amt=parseFloat(j.Total_Amount||0);
+  const amt = parseFloat(String(j.Total_Amount || "0").replace(/[^0-9.-]+/g, "")) || 0;
   const sd=j.Scheduled_Date;
   const isASAP=j.Scheduling_Type==='ASAP'&&!sd;
   const dStr=isASAP?'⚡ ASAP':fmtD(sd);
@@ -2335,6 +2335,7 @@ function bookAgain(jid){
   else{setPrice('Hourly');if($('bj-hrs'))$('bj-hrs').value=j.Estimated_Hours||'2';}
   if($('bj-sur'))$('bj-sur').value=parseFloat(j.Surcharge||0)>0?j.Surcharge:'';
   if($('bj-notes'))$('bj-notes').value=j.Job_Notes||'';
+  if($('bj-sur'))$('bj-sur').value = parseFloat(j.Surcharge || 0) > 0 ? j.Surcharge : '';
   calc();
   if($('bj-date'))$('bj-date').value='';
   setSched('hard');
