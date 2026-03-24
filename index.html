@@ -1923,31 +1923,37 @@ function setCS(v){
 }
 async function submitClient(thenBook=false){
   if(_isSaving)return;
-  _isSaving=true;
+  _isSaving = true;
   
   const btn = document.activeElement; 
-  const origText = btn ? btn.textContent : '';
+  const origText = btn ? btn.textContent : 'Save Client';
   
   if(btn && btn.tagName === 'BUTTON') { 
     btn.disabled = true; 
     btn.classList.add('saving');
     btn.textContent = '⏳ Saving...'; 
   }
-  
+
   const first=$('ac-first').value.trim();const last=$('ac-last').value.trim();
-  if(!first&&!last){showToast('⚠️ Enter a name'); _isSaving=false; if(btn){btn.disabled=false;btn.textContent=origText;} return;}
+  if(!first&&!last){
+    showToast('⚠️ Enter a name'); 
+    _isSaving=false; 
+    if(btn){btn.disabled=false;btn.textContent=origText;} 
+    return;
+  }
+  
   const data={First_Name:first,Last_Name:last,Phone:$('ac-phone').value.trim(),Phone2:$('ac-phone2').value.trim(),
     Email:$('ac-email').value.trim(),Street:$('ac-street').value.trim(),
     City:$('ac-city').value.trim()||'Georgetown',Province:'ON',
     Postal_Code:$('ac-postal').value.trim().toUpperCase(),Status:S.cliStatus,
     Referral_Source:$('ac-ref').value,Family_Details:$('ac-family').value.trim(),
     Access_Info:$('ac-access').value.trim(),Global_Notes:$('ac-notes').value.trim()};
+    
   if(S.editCli){
     const c=S.clients.find(x=>x.Client_ID===S.editCli);if(c)Object.assign(c,data);
     if(!S.isDemo)await gasCall({action:'updateClient',clientId:S.editCli,...data});
     showToast('✓ Client updated');refreshData();goBack();
   }else{
-    // Duplicate check — warn if same last name, phone, email, or address already exists
     const phone=data.Phone.replace(/\D/g,'');
     const dup=S.clients.find(c=>{
       if(c.Last_Name&&data.Last_Name&&c.Last_Name.toLowerCase()===data.Last_Name.toLowerCase())return true;
@@ -1962,14 +1968,13 @@ async function submitClient(thenBook=false){
     }
     data.Client_ID='C'+Date.now();data.Created_Date=today();S.clients.push(data);
     if(!S.isDemo){const r=await gasCall({action:'addClient',...data});if(r.Client_ID){
-      // Update temp ID with server ID
       const idx=S.clients.findIndex(x=>x.Client_ID===data.Client_ID);
       if(idx!==-1)S.clients[idx].Client_ID=r.Client_ID;
       data.Client_ID=r.Client_ID;
     }}
     S.curCli=data.Client_ID;showToast('✓ '+first+' '+last+' added!');
     if(thenBook){openBookJobForClient();}
-    else{navTo('clients');renderCli();} // navigate first, then render so list is visible immediately
+    else{navTo('clients');renderCli();}
   }
   _isSaving=false;
   if(btn){btn.disabled=false;btn.textContent=origText;}
@@ -2153,13 +2158,25 @@ async function submitJob(){
     btn.innerHTML = '<span>⏳ Saving...</span>';
     btn.style.opacity = '0.7';
   }
-  
+
   const cid=$('bj-cli')?.value;
-  if(!cid){showToast('⚠️ Select a client'); _isSaving=false; if(btn){btn.disabled=false;btn.textContent=origText;} return;}
+  if(!cid){
+    showToast('⚠️ Select a client'); 
+    _isSaving=false; 
+    if(btn){btn.disabled=false;btn.innerHTML=origText;btn.style.opacity='1';} 
+    return;
+  }
+  
   const svc=$('bj-svc')?.value||'';
   const schedType=S.schedType;
   let date=$('bj-date')?.value||'';const time=$('bj-time')?.value||'';
-  if(schedType!=='asap'&&!date){showToast('⚠️ Enter a date'); _isSaving=false; if(btn){btn.disabled=false;btn.textContent=origText;} return;}
+  if(schedType!=='asap'&&!date){
+    showToast('⚠️ Enter a date'); 
+    _isSaving=false; 
+    if(btn){btn.disabled=false;btn.innerHTML=origText;btn.style.opacity='1';} 
+    return;
+  }
+  
   if(schedType==='asap')date='';
   const rate=hourlyRate();
   let base=0;
@@ -2168,6 +2185,7 @@ async function submitJob(){
   const sur=parseFloat($('bj-sur')?.value)||0;
   const hst=(base+sur)*taxRate();const tot=base+sur+hst;
   const notes=$('bj-notes')?.value.trim()||'';
+  
   const data={Job_ID:'J'+Date.now(),Client_ID:cid,Service:svc,Scheduled_Date:date,Completion_Date:'',Time:time,
     Pricing_Type:S.priceType,Estimated_Hours:S.priceType==='Hourly'?($('bj-hrs')?.value||'2'):'',
     Flat_Rate:S.priceType==='Flat'?($('bj-flat')?.value||''):'',Surcharge:String(sur),
@@ -2177,27 +2195,23 @@ async function submitJob(){
     Job_Notes:notes,Completion_Notes:'',Actual_Hours:'',Additional_Cost:'',Additional_Cost_Notes:'',
     Review_Status:'',Review_Notes:'',Payment_Status:'',Payment_Method:'',
     Photo_Links:'',Created_Date:today(),PrePaid_Reason:''};
+    
   S.jobs.push(data);
   const c=S.clients.find(x=>x.Client_ID===cid);if(c&&c.Status==='Lead')c.Status='Active';
   showToast('📅 Job booked!');
-  // Navigate back and re-render the correct view immediately
+  
   if(S.stack.includes('add-client')){S.stack=[];openProfile(cid);}
   else if(S.stack.includes('profile')){goBack();openProfile(cid);}
   else{goBack();renderDash();}
 
-  // 2. Release button lock
   _isSaving=false;
-  if(btn){btn.disabled=false;btn.textContent=origText;}
+  if(btn){btn.disabled=false;btn.innerHTML=origText;btn.style.opacity='1';}
 
-  // 3. Send to Google in background — no await, no UI freeze
   if(!S.isDemo){
     gasCall({action:'addJob',...data}).then(r=>{
       if(r&&r.Job_ID){
-        // Update temp ID with server-confirmed ID — no loadAllData() here
-        // loadAllData() after background calls was overwriting deletes and causing ghost jobs
         const idx=S.jobs.findIndex(x=>x.Job_ID===data.Job_ID);
         if(idx!==-1)S.jobs[idx].Job_ID=r.Job_ID;
-        data.Job_ID=r.Job_ID;
       }
     });
   }
