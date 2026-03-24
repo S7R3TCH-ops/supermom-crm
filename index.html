@@ -991,7 +991,10 @@ function updHeader(v){
   if(v==='admin')    {bk.classList.remove('hidden');setHT('Admin & Settings');renderAdmin();syncBizUI();}
 }
 function setHT(t){
-  document.querySelectorAll('#htc').forEach(el=>el.remove()); // Foolproof wipe of all duplicate titles
+  // Wipe out any existing titles so they never stack
+  document.querySelectorAll('#htc').forEach(el=>el.remove()); 
+  
+  // Add page title BELOW the logo
   const d=document.createElement('div');d.id='htc';d.textContent=t;$('htw').appendChild(d);
 }
 function updNav(v){document.querySelectorAll('.ni').forEach(n=>n.classList.toggle('active',n.dataset.v===v));}
