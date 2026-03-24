@@ -1824,74 +1824,113 @@ function jeCalc(){
   html+=`<div style="display:flex;justify-content:space-between;font-family:'Nunito',sans-serif;font-weight:900;color:var(--txt);font-size:14px;"><span>New Total</span><span>$${total.toFixed(2)}</span></div>`;
   preview.innerHTML=html;
 }
-async function submitJobEdit(btn, markPaid=false){
-  if(_isSaving)return;
-  _isSaving=true;
+async function submitJobEdit(btn, markPaid = false) {
+  if (_isSaving) return;
+  _isSaving = true;
   const origText = btn ? btn.textContent : '💾 Save Changes';
-  if(btn){btn.disabled=true;btn.textContent='Saving...';}
-  
-// Capture inputs - Only grab values if the element exists and is NOT empty
+  if (btn) { btn.disabled = true; btn.textContent = 'Saving...'; }
+
+  try {
+    const jid = S.jobModal;
+    const j = S.jobs.find(x => x.Job_ID === jid);
+    if (!j) throw new Error("Job not found");
+
+    // Helper: Only get value if field is visible/active
+    const getVal = (id) => {
+      const el = $(id);
+      if (!el || el.offsetParent === null) return undefined;
+      return el.value;
+    };
+
     const svc = $('je-svc')?.value || '';
     const date = $('je-date')?.value || '';
     const time = $('je-time')?.value || '';
     const notes = $('je-notes')?.value.trim() || '';
     const comp = $('je-comp')?.value.trim() || '';
-    
-    // Helper to get value only if field is actually being used
-    const getVal = (id) => {
-      const el = $(id);
-      if (!el || el.offsetParent === null) return undefined; // Hidden or non-existent
-      return el.value;
-    };
 
     const actHrs = getVal('je-hrs');
     const estHrs = getVal('je-est-hrs');
     const flatRate = getVal('je-flat');
-    const surcharge = getVal('je-sur');
-    const addCost = getVal('je-addcost') || "0";
-    
-    if(markPaid){ j.Payment_Status='Paid'; j.Payment_Method=$('je-pm')?.value||'Cash'; }
+    const sur = getVal('je-sur');
+    const addCost = getVal('je-addcost');
+    const isFlat = $('je-pr-f')?.classList.contains('on');
+    const pType = isFlat ? 'Flat' : 'Hourly';
 
-    if(!S.isDemo){
+    // LOCAL MATH FOR INSTANT UI UPDATE
+    const rate = hourlyRate();
+    const tax = taxRate();
+    let base = 0;
+
+    if (isFlat) {
+      base = parseFloat(flatRate || j.Flat_Rate || 0);
+    } else {
+      const hSource = (j.Job_Status === 'Completed' || actHrs !== undefined) ? (actHrs || j.Actual_Hours) : (estHrs || j.Estimated_Hours);
+      base = parseFloat(hSource || 0) * rate;
+    }
+
+    const currentSur = parseFloat(sur !== undefined ? sur : (j.Surcharge || 0)) || 0;
+    const currentAdd = parseFloat(addCost !== undefined ? addCost : (j.Additional_Cost || 0)) || 0;
+
+    const sub = base + currentSur + currentAdd;
+    const hst = sub * tax;
+    const tot = sub + hst;
+
+    closeMo('m-job');
+
+    // Update the local object entirely
+    Object.assign(j, {
+      Service: svc,
+      Scheduled_Date: date,
+      Time: time,
+      Job_Notes: notes,
+      Completion_Notes: comp || j.Completion_Notes,
+      Actual_Hours: actHrs !== undefined ? String(actHrs) : j.Actual_Hours,
+      Estimated_Hours: estHrs !== undefined ? String(estHrs) : j.Estimated_Hours,
+      Pricing_Type: pType,
+      Flat_Rate: flatRate !== undefined ? String(flatRate) : j.Flat_Rate,
+      Surcharge: String(currentSur),
+      Additional_Cost: String(currentAdd),
+      Additional_Cost_Notes: $('je-addcost-notes')?.value.trim() || '',
+      Subtotal: sub.toFixed(2),
+      HST: hst.toFixed(2),
+      Total_Amount: tot.toFixed(2),
+      Follow_Up: S.followUp
+    });
+
+    if (markPaid) { j.Payment_Status = 'Paid'; j.Payment_Method = $('je-pm')?.value || 'Cash'; }
+
+    if (!S.isDemo) {
       await gasCall({
         action: 'updateJobDetails',
         jobId: jid,
-        svc, date, time, notes, comp, hrs: String(actHrs),
+        svc, date, time, notes, comp, hrs: actHrs,
         photos: $('je-photos')?.value.trim() || '',
         revStatus: $('je-rev')?.value || j.Review_Status,
         followUp: S.followUp,
         markPaid, method: $('je-pm')?.value || 'Cash',
         additionalCost: addCost,
         additionalCostNotes: $('je-addcost-notes')?.value.trim() || '',
-        estimatedHours: String(estHrs),
-        flatRate: String(flatRate),
-        surcharge: String(sur),
+        estimatedHours: estHrs,
+        flatRate: flatRate,
+        surcharge: sur,
         pricingType: pType
       });
     }
-    
-    try{localStorage.removeItem('smhq_cache');}catch(e){}
-    
-    // CRITICAL: Refresh the UI immediately
-    if(S.view === 'dashboard') renderDash();
-    else if(S.view === 'profile') openProfile(j.Client_ID);
-    
+
+    try { localStorage.removeItem('smhq_cache'); } catch (e) { }
+
+    if (S.view === 'dashboard') renderDash();
+    else if (S.view === 'profile') openProfile(j.Client_ID);
+
     showToast(markPaid ? '💰 Saved + paid' : '✓ Job updated');
 
   } catch (err) {
     console.error("Save Error:", err);
     showToast("⚠️ Error saving changes");
   } finally {
-    _isSaving=false;
-    if(btn){btn.disabled=false;btn.textContent=origText;}
+    _isSaving = false;
+    if (btn) { btn.disabled = false; btn.textContent = origText; }
   }
-}
-function confirmDeleteJob(){
-  closeMo('m-job');const j=getJob(S.jobModal);
-  $('m-del-body').innerHTML=`<div style="font-size:14px;color:var(--txt2);margin-bottom:16px;line-height:1.5;">Delete <strong>${esc(j.Service)}</strong> on ${fmtD(j.Scheduled_Date)}? Invoice also removed.</div>
-    <button class="btn b-r mb8" onclick="deleteJob()">🗑️ Yes, Delete</button>
-    <button class="btn b-s" onclick="closeMo('m-del')">Cancel</button>`;
-  showMo('m-del');
 }
 async function deleteJob(){
   closeMo('m-del');const jid=S.jobModal;
