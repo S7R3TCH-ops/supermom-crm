@@ -1830,50 +1830,25 @@ async function submitJobEdit(btn, markPaid=false){
   const origText = btn ? btn.textContent : '💾 Save Changes';
   if(btn){btn.disabled=true;btn.textContent='Saving...';}
   
-  try {
-    const jid=S.jobModal;
-    const j=S.jobs.find(x=>x.Job_ID===jid);
-    if(!j) throw new Error("Job not found");
-
+// Capture inputs - Only grab values if the element exists and is NOT empty
     const svc = $('je-svc')?.value || '';
     const date = $('je-date')?.value || '';
     const time = $('je-time')?.value || '';
     const notes = $('je-notes')?.value.trim() || '';
     const comp = $('je-comp')?.value.trim() || '';
-    const actHrs = parseFloat($('je-hrs')?.value) || 0;
-    const estHrs = parseFloat($('je-est-hrs')?.value) || 0;
-    const addCost = parseFloat($('je-addcost')?.value) || 0;
-    const sur = parseFloat($('je-sur')?.value) || 0;
-    const flatRate = parseFloat($('je-flat')?.value) || 0;
-    const isFlat = $('je-pr-f')?.classList.contains('on');
-    const pType = isFlat ? 'Flat' : 'Hourly';
+    
+    // Helper to get value only if field is actually being used
+    const getVal = (id) => {
+      const el = $(id);
+      if (!el || el.offsetParent === null) return undefined; // Hidden or non-existent
+      return el.value;
+    };
 
-    // MATH RECALCULATION (Must match backend exactly)
-    const rate = hourlyRate();
-    const tax = taxRate();
-    let base = isFlat ? flatRate : (j.Job_Status === 'Completed' ? actHrs : estHrs) * rate;
-    const sub = base + sur + addCost;
-    const hst = sub * tax;
-    const tot = sub + hst;
-
-    closeMo('m-job');
-
-    // Update the local object entirely
-    Object.assign(j, {
-      Service: svc, Scheduled_Date: date, Time: time, Job_Notes: notes,
-      Completion_Notes: comp || j.Completion_Notes,
-      Actual_Hours: String(actHrs),
-      Estimated_Hours: String(estHrs),
-      Pricing_Type: pType,
-      Flat_Rate: String(flatRate),
-      Surcharge: String(sur),
-      Additional_Cost: String(addCost),
-      Additional_Cost_Notes: $('je-addcost-notes')?.value.trim() || '',
-      Subtotal: sub.toFixed(2),
-      HST: hst.toFixed(2),
-      Total_Amount: tot.toFixed(2),
-      Follow_Up: S.followUp
-    });
+    const actHrs = getVal('je-hrs');
+    const estHrs = getVal('je-est-hrs');
+    const flatRate = getVal('je-flat');
+    const surcharge = getVal('je-sur');
+    const addCost = getVal('je-addcost') || "0";
     
     if(markPaid){ j.Payment_Status='Paid'; j.Payment_Method=$('je-pm')?.value||'Cash'; }
 
