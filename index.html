@@ -1835,73 +1835,72 @@ async function submitJobEdit(btn, markPaid=false){
     const j=S.jobs.find(x=>x.Job_ID===jid);
     if(!j) throw new Error("Job not found");
 
-    // Capture inputs
     const svc = $('je-svc')?.value || '';
     const date = $('je-date')?.value || '';
     const time = $('je-time')?.value || '';
     const notes = $('je-notes')?.value.trim() || '';
     const comp = $('je-comp')?.value.trim() || '';
-    const actHrs = $('je-hrs')?.value || '';
-    const estHrs = $('je-est-hrs')?.value || '';
-    const photos = $('je-photos')?.value.trim() || '';
-    const revStatus = $('je-rev')?.value || '';
-    const method = $('je-pm')?.value || 'Cash';
-    const addCost = $('je-addcost')?.value || '0';
-    const addCostNotes = $('je-addcost-notes')?.value.trim() || '';
-    const flatRate = $('je-flat')?.value || '';
-    const surcharge = $('je-sur')?.value || '';
+    const actHrs = parseFloat($('je-hrs')?.value) || 0;
+    const estHrs = parseFloat($('je-est-hrs')?.value) || 0;
+    const addCost = parseFloat($('je-addcost')?.value) || 0;
+    const sur = parseFloat($('je-sur')?.value) || 0;
+    const flatRate = parseFloat($('je-flat')?.value) || 0;
     const isFlat = $('je-pr-f')?.classList.contains('on');
     const pType = isFlat ? 'Flat' : 'Hourly';
 
+    // MATH RECALCULATION (Must match backend exactly)
+    const rate = hourlyRate();
+    const tax = taxRate();
+    let base = isFlat ? flatRate : (j.Job_Status === 'Completed' ? actHrs : estHrs) * rate;
+    const sub = base + sur + addCost;
+    const hst = sub * tax;
+    const tot = sub + hst;
+
     closeMo('m-job');
 
-    // Update local state (Optimistic UI)
-    // Note: Using uppercase 'S' for global state
+    // Update the local object entirely
     Object.assign(j, {
-      Service: svc, 
-      Scheduled_Date: date, 
-      Time: time, 
-      Job_Notes: notes,
-      Completion_Notes: comp || j.Completion_Notes, 
-      Actual_Hours: actHrs || j.Actual_Hours,
-      Estimated_Hours: estHrs || j.Estimated_Hours,
+      Service: svc, Scheduled_Date: date, Time: time, Job_Notes: notes,
+      Completion_Notes: comp || j.Completion_Notes,
+      Actual_Hours: String(actHrs),
+      Estimated_Hours: String(estHrs),
       Pricing_Type: pType,
-      Flat_Rate: flatRate || j.Flat_Rate,
-      Surcharge: surcharge || j.Surcharge,
-      Additional_Cost: addCost,
-      Additional_Cost_Notes: addCostNotes,
-      Review_Status: revStatus || j.Review_Status,
-      Follow_Up: S.followUp 
+      Flat_Rate: String(flatRate),
+      Surcharge: String(sur),
+      Additional_Cost: String(addCost),
+      Additional_Cost_Notes: $('je-addcost-notes')?.value.trim() || '',
+      Subtotal: sub.toFixed(2),
+      HST: hst.toFixed(2),
+      Total_Amount: tot.toFixed(2),
+      Follow_Up: S.followUp
     });
     
-    if(markPaid){ j.Payment_Status='Paid'; j.Payment_Method=method; }
+    if(markPaid){ j.Payment_Status='Paid'; j.Payment_Method=$('je-pm')?.value||'Cash'; }
 
     if(!S.isDemo){
       await gasCall({
         action: 'updateJobDetails',
         jobId: jid,
-        svc: svc, 
-        date: date, 
-        time: time, 
-        notes: notes, 
-        comp: comp, 
-        hrs: actHrs, 
-        photos: photos, 
-        revStatus: revStatus,
+        svc, date, time, notes, comp, hrs: String(actHrs),
+        photos: $('je-photos')?.value.trim() || '',
+        revStatus: $('je-rev')?.value || j.Review_Status,
         followUp: S.followUp,
-        markPaid: markPaid, 
-        method: method,
+        markPaid, method: $('je-pm')?.value || 'Cash',
         additionalCost: addCost,
-        additionalCostNotes: addCostNotes,
-        estimatedHours: estHrs,
-        flatRate: flatRate,
-        surcharge: surcharge,
+        additionalCostNotes: $('je-addcost-notes')?.value.trim() || '',
+        estimatedHours: String(estHrs),
+        flatRate: String(flatRate),
+        surcharge: String(sur),
         pricingType: pType
       });
     }
     
     try{localStorage.removeItem('smhq_cache');}catch(e){}
-    refreshData();
+    
+    // CRITICAL: Refresh the UI immediately
+    if(S.view === 'dashboard') renderDash();
+    else if(S.view === 'profile') openProfile(j.Client_ID);
+    
     showToast(markPaid ? '💰 Saved + paid' : '✓ Job updated');
 
   } catch (err) {
