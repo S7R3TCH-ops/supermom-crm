@@ -831,7 +831,10 @@ function saveBizConfig(){
     gasCall({action:'updateBizConfig',...S.biz});
   }
   const pb=$('pr-h');if(pb)pb.textContent=`⏱ Hourly ($${S.biz.rate}/hr)`;
-  updateHeaderBrand();calc();showToast('✓ Business info saved');
+  updateHeaderBrand();
+  try { localStorage.removeItem('smhq_cache'); } catch(e) {}
+  calc();
+  showToast('✓ Business info saved');
 }
 function hourlyRate(){return S.biz.rate||50;}
 function taxRate(){return parseFloat(S.biz.tax_rate)||0.13;}
@@ -880,7 +883,6 @@ async function loadAllData(){
   await drainOfflineQueue();
   
   const r=await gasCall({action:'getAllData'});
-  console.log("RAW SERVER DATA:", r); 
   if(r.success){
     // Filter out any jobs/clients pending GAS delete confirmation
     S.clients=(r.clients||[]).filter(c=>!_pendingDeletes.clients.has(c.Client_ID));
@@ -1564,8 +1566,10 @@ function setPayNow(v){
   calcJobTotal();
 }
 async function submitComplete(btn){
-  if(_isSaving)return;_isSaving=true;
-  if(btn){btn.disabled=true;btn.textContent='Saving...';}
+  if(_isSaving)return;
+  const btn = document.querySelector('#view-book-job .btn.b-p'); // Target specific button
+  if(btn) btn.classList.add('saving'); 
+  _isSaving=true;
   const jid=S.jobModal;
   const j0=getJob(jid); 
   const hrs=$('cp-hrs')?.value||'';
@@ -1918,10 +1922,17 @@ function setCS(v){
   S.cliStatus=v;['Lead','Active','Inactive'].forEach(s=>{const el=$('s-'+s.toLowerCase());if(el)el.classList.toggle('on',s===v);});
 }
 async function submitClient(thenBook=false){
-  if(_isSaving)return;_isSaving=true;
-  const btn = document.activeElement;
+  if(_isSaving)return;
+  _isSaving=true;
+  
+  const btn = document.activeElement; 
   const origText = btn ? btn.textContent : '';
-  if(btn && btn.tagName === 'BUTTON') { btn.disabled = true; btn.textContent = 'Saving...'; }
+  
+  if(btn && btn.tagName === 'BUTTON') { 
+    btn.disabled = true; 
+    btn.classList.add('saving');
+    btn.textContent = '⏳ Saving...'; 
+  }
   
   const first=$('ac-first').value.trim();const last=$('ac-last').value.trim();
   if(!first&&!last){showToast('⚠️ Enter a name'); _isSaving=false; if(btn){btn.disabled=false;btn.textContent=origText;} return;}
@@ -2131,8 +2142,10 @@ function calc(){
   const fh=document.querySelector('.fh');if(fh&&fh.textContent.includes('HST'))fh.textContent='HST ('+taxPct+'%) added automatically';
 }
 async function submitJob(){
-  if(_isSaving)return;_isSaving=true;
-  const btn = document.activeElement;
+  if(_isSaving)return;
+  const btn = document.querySelector('#view-book-job .btn.b-p'); // Target specific button
+  if(btn) btn.classList.add('saving'); 
+  _isSaving=true;
   const origText = btn ? btn.textContent : '';
   if(btn && btn.tagName === 'BUTTON') { btn.disabled = true; btn.textContent = 'Saving...'; }
   
