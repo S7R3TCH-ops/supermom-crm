@@ -1826,54 +1826,63 @@ function jeCalc(){
 }
 async function submitJobEdit(btn, markPaid=false){
   if(_isSaving)return;_isSaving=true;
+  const origText = btn ? btn.textContent : '';
   if(btn){btn.disabled=true;btn.textContent='Saving...';}
+  
   const jid=S.jobModal;
-  const svc=$('je-svc')?.value||'';const date=$('je-date')?.value||'';const time=$('je-time')?.value||'';
-  const notes=$('je-notes')?.value.trim()||'';const comp=$('je-comp')?.value.trim()||'';
-  const hrs=$('je-hrs')?.value||'';const photos=$('je-photos')?.value.trim()||'';
-  const revStatus=$('je-rev')?.value||'';const method=$('je-pm')?.value||'Cash';
+  const svc=$('je-svc')?.value||'';
+  const date=$('je-date')?.value||'';
+  const time=$('je-time')?.value||'';
+  const notes=$('je-notes')?.value.trim()||'';
+  const comp=$('je-comp')?.value.trim()||'';
+  const hrs=$('je-hrs')?.value||'';
+  const photos=$('je-photos')?.value.trim()||'';
+  const revStatus=$('je-rev')?.value||'';
+  const method=$('je-pm')?.value||'Cash';
   const addCost=parseFloat($('je-addcost')?.value)||0;
   const addCostNotes=$('je-addcost-notes')?.value.trim()||'';
+  
+  // NEW: Capture Pricing/Hours/Surcharge for the update
   const estHrs=$('je-est-hrs')?.value||'';
   const flatRate=$('je-flat')?.value||'';
   const surcharge=$('je-sur')?.value||'';
   const isFlat=$('je-pr-f')?.classList.contains('on');
+
   closeMo('m-job');
   const j=S.jobs.find(x=>x.Job_ID===jid);
   if(j){
-    if(svc)j.Service=svc;
-    if(date){j.Scheduled_Date=date;if(j.Scheduling_Type==='ASAP')j.Scheduling_Type='Hard Date';}
-    if(time)j.Time=time;
-    j.Job_Notes=notes;
-    if(comp)j.Completion_Notes=comp;
-    if(hrs)j.Actual_Hours=hrs;
-    if(photos)j.Photo_Links=photos;
-    if(revStatus)j.Review_Status=revStatus;
-    j.Follow_Up=S.followUp;
-    if(addCost>0){j.Additional_Cost=String(addCost);j.Additional_Cost_Notes=addCostNotes;}
-    if(estHrs||flatRate||surcharge){
-      const rate=hourlyRate();
-      const sur=parseFloat(surcharge)||parseFloat(j.Surcharge)||0;
-      let base=0;
-      if(isFlat){base=parseFloat(flatRate)||0;j.Pricing_Type='Flat';j.Flat_Rate=String(base);j.Estimated_Hours='';}
-      else{const eh=parseFloat(estHrs)||0;base=eh*rate;j.Pricing_Type='Hourly';j.Estimated_Hours=String(eh);j.Flat_Rate='';}
-      j.Surcharge=String(sur);
-      const sub=base+sur+addCost;
-      const hst=sub*taxRate();
-      j.Subtotal=String(base+sur);
-      j.HST=hst.toFixed(2);
-      j.Total_Amount=(sub+hst).toFixed(2);
-    }
-    if(markPaid){j.Payment_Status='Paid';j.Payment_Method=method;}
+    j.Service=svc; j.Scheduled_Date=date; j.Time=time; j.Job_Notes=notes;
+    j.Completion_Notes=comp; j.Actual_Hours=hrs; j.Photo_Links=photos;
+    j.Review_Status=revStatus; j.Follow_Up=S.followUp;
+    j.Additional_Cost=String(addCost); j.Additional_Cost_Notes=addCostNotes;
+    
+    // Update local object for immediate UI feedback
+    if(isFlat){ j.Pricing_Type='Flat'; j.Flat_Rate=flatRate; j.Estimated_Hours=''; }
+    else { j.Pricing_Type='Hourly'; j.Estimated_Hours=estHrs; j.Flat_Rate=''; }
+    j.Surcharge=surcharge;
+    
+    if(markPaid){j.Payment_Status='Paid'; j.Payment_Method=method;}
   }
-  if(markPaid){
-    const tod=today();const inv=S.financials.find(f=>f.Job_ID===jid);
-    if(inv){inv.Status='Paid';inv.Payment_Method=method;inv.Paid_Date=tod;}
-    else S.financials.push({Invoice_ID:'INV'+Date.now(),Job_ID:jid,Client_ID:j.Client_ID,Amount:j.Total_Amount,Status:'Paid',Payment_Method:method,Paid_Date:tod});
+
+  if(!S.isDemo){
+    await gasCall({
+      action:'updateJobDetails',
+      jobId:jid,
+      svc, date, time, notes, comp, hrs, photos, revStatus,
+      followUp:S.followUp,
+      markPaid, method,
+      additionalCost:addCost,
+      additionalCostNotes:addCostNotes,
+      estimatedHours:estHrs,
+      flatRate:flatRate,
+      surcharge:surcharge,
+      pricingType:isFlat?'Flat':'Hourly'
+    });
   }
-  if(!S.isDemo)await gasCall({action:'updateJobDetails',jobId:jid,svc,date,time,notes,comp,hrs,photos,revStatus,followUp:S.followUp,markPaid,method,additionalCost:addCost,additionalCostNotes:addCostNotes});
-  refreshData();showToast(markPaid?'💰 Saved + paid':'✓ Job updated');
-  if(S.view==='profile')openProfile(j?.Client_ID);
+  
+  try{localStorage.removeItem('smhq_cache');}catch(e){}
+  refreshData();
+  showToast(markPaid?'💰 Saved + paid':'✓ Job updated');
   _isSaving=false;
 }
 function confirmDeleteJob(){
