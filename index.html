@@ -1567,7 +1567,14 @@ function setPayNow(v){
 }
 async function submitComplete(btn){
   if(_isSaving)return;
-  const btn = document.querySelector('#view-book-job .btn.b-p'); // Target specific button
+  _isSaving=true;
+
+  // We already have 'btn' passed from the HTML onclick!
+  const origText = btn ? btn.textContent : '';
+  if(btn && btn.tagName === 'BUTTON') { 
+    btn.disabled = true; 
+    btn.textContent = 'Saving...'; 
+  }  
   if(btn) btn.classList.add('saving'); 
   _isSaving=true;
   const jid=S.jobModal;
