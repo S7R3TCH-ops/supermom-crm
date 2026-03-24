@@ -880,6 +880,7 @@ async function loadAllData(){
   await drainOfflineQueue();
   
   const r=await gasCall({action:'getAllData'});
+  console.log("RAW SERVER DATA:", r); 
   if(r.success){
     // Filter out any jobs/clients pending GAS delete confirmation
     S.clients=(r.clients||[]).filter(c=>!_pendingDeletes.clients.has(c.Client_ID));
