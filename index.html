@@ -2143,11 +2143,16 @@ function calc(){
 }
 async function submitJob(){
   if(_isSaving)return;
-  const btn = document.querySelector('#view-book-job .btn.b-p'); // Target specific button
-  if(btn) btn.classList.add('saving'); 
-  _isSaving=true;
-  const origText = btn ? btn.textContent : '';
-  if(btn && btn.tagName === 'BUTTON') { btn.disabled = true; btn.textContent = 'Saving...'; }
+  _isSaving = true;
+  
+  const btn = document.querySelector('#view-book-job .btn.b-p'); 
+  const origText = '📅 Save Job';
+  
+  if(btn) { 
+    btn.disabled = true; 
+    btn.innerHTML = '<span>⏳ Saving...</span>';
+    btn.style.opacity = '0.7';
+  }
   
   const cid=$('bj-cli')?.value;
   if(!cid){showToast('⚠️ Select a client'); _isSaving=false; if(btn){btn.disabled=false;btn.textContent=origText;} return;}
