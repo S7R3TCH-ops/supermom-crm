@@ -1895,9 +1895,11 @@ async function submitJobEdit(btn, markPaid = false) {
       Total_Amount: tot.toFixed(2)
     });
 
-    if (!S.isDemo) {
+if (!S.isDemo) {
       await gasCall({
-        action: 'updateJobDetails', jobId: jid,
+        action: 'updateJobDetails',
+        jobId: jid,
+        totalAmount: tot.toFixed(2), // <--- ADD THIS LINE
         svc, date, time, notes, comp, hrs: actHrs,
         estimatedHours: estHrs, flatRate: flatRate,
         surcharge: sur, additionalCost: addCost, markPaid
@@ -1921,14 +1923,14 @@ async function deleteJob(){
   const jid = S.jobModal;
   if(!jid) return;
 
-  // 1. BLOCK the ghosting immediately
+  // 1. Shield: Immediately tell the app to ignore this ID if it comes back in a refresh
   _pendingDeletes.jobs.add(jid);
   
   // 2. Clear UI
   closeMo('m-del');
   closeMo('m-job');
   
-  // 3. Remove from local memory
+  // 3. Wipe from local memory
   S.jobs = S.jobs.filter(x => x.Job_ID !== jid);
   S.financials = S.financials.filter(x => x.Job_ID !== jid);
   
@@ -1937,7 +1939,7 @@ async function deleteJob(){
   refreshData();
   showToast('🗑️ Deleting...');
 
-  // 4. Tell server
+  // 4. Send to server
   if(!S.isDemo) {
     await gasCall({action:'deleteJob', jobId:jid});
   }
