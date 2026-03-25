@@ -1169,62 +1169,66 @@ function dsec(lid,sid,jobs,type){
   s.style.display='';l.innerHTML=jobs.map(j=>jrHTML(j,type)).join('');
 }
 
-function jrHTML(j,type){
-  const c=getCli(j.Client_ID);
+function jrHTML(j, type) {
+  const c = getCli(j.Client_ID);
   const amt = parseFloat(String(j.Total_Amount || "0").replace(/[^0-9.-]+/g, "")) || 0;
-  const sd=j.Scheduled_Date;
-  const isASAP=j.Scheduling_Type==='ASAP'&&!sd;
-  const dStr=isASAP?'⚡ ASAP':fmtD(sd);
-  const icons={owed:'🔴',sched:'🔵',fu:'🔔',review:'⭐',overdue:'🟠',unschd:'🗓️',lead:'🟡'};
+  const sd = j.Scheduled_Date;
+  const isASAP = j.Scheduling_Type === 'ASAP' && !sd;
+  const dStr = isASAP ? '⚡ ASAP' : fmtD(sd);
+  const icons = { owed: '🔴', sched: '🔵', fu: '🔔', review: '⭐', overdue: '🟠', unschd: '🗓️', lead: '🟡' };
 
-  let pillHtml='';
-  if(type==='sched'){
-    pillHtml=isASAP?`<span class="pill p-amb">⚡ ASAP</span>`:`<span class="pill p-blue">📅 Booked</span>`;
-  } else if(type==='owed'){
-    pillHtml=`<span class="pill p-red">⏳ Unpaid</span>`;
-  } else if(type==='fu'){
-    pillHtml=`<span class="pill p-pink">🔔 Follow-Up</span>`;
-  } else if(type==='review'){
-    pillHtml=`<span class="pill p-amb">⭐ Ask Review</span>`;
-  } else if(type==='overdue'){
-    pillHtml=`<span class="pill p-ora">⚠️ Past Due</span>`;
-  } else if(type==='unschd'){
-    pillHtml=`<span class="pill p-amb">${isASAP?'⚡ ASAP':esc(j.Scheduling_Type||'TBD')}</span>`;
+  // FIX: Determine which hours to show based on status
+  const hDisplay = j.Job_Status === 'Completed' ? (j.Actual_Duration || j.Estimated_Hours) : j.Estimated_Hours;
+
+  let pillHtml = '';
+  if (type === 'sched') {
+    pillHtml = isASAP ? `<span class="pill p-amb">⚡ ASAP</span>` : `<span class="pill p-blue">📅 Booked</span>`;
+  } else if (type === 'owed') {
+    pillHtml = `<span class="pill p-red">⏳ Unpaid</span>`;
+  } else if (type === 'fu') {
+    pillHtml = `<span class="pill p-pink">🔔 Follow-Up</span>`;
+  } else if (type === 'review') {
+    pillHtml = `<span class="pill p-amb">⭐ Ask Review</span>`;
+  } else if (type === 'overdue') {
+    pillHtml = `<span class="pill p-ora">⚠️ Past Due</span>`;
+  } else if (type === 'unschd') {
+    pillHtml = `<span class="pill p-amb">${isASAP ? '⚡ ASAP' : esc(j.Scheduling_Type || 'TBD')}</span>`;
   }
 
-  let btnHtml='';
-  if(type==='sched'||type==='overdue'){
-    if(isASAP){
-      btnHtml=`<button class="btn b-sm b-amb" data-action="schedule" data-jid="${esc(j.Job_ID)}">📅 Set Date</button>`;
+  let btnHtml = '';
+  if (type === 'sched' || type === 'overdue') {
+    if (isASAP) {
+      btnHtml = `<button class="btn b-sm b-amb" data-action="schedule" data-jid="${esc(j.Job_ID)}">📅 Set Date</button>`;
     } else {
-      btnHtml=`<button class="btn b-sm b-bl" data-action="complete" data-jid="${esc(j.Job_ID)}">✅ Done</button>`;
+      btnHtml = `<button class="btn b-sm b-bl" data-action="complete" data-jid="${esc(j.Job_ID)}">✅ Done</button>`;
     }
-  } else if(type==='owed'){
-    btnHtml=`<button class="btn b-sm b-g" data-action="paid" data-jid="${esc(j.Job_ID)}">💰 Paid</button>`;
-  } else if(type==='fu'){
-    btnHtml=`<button class="btn b-sm b-s" data-action="clearfu" data-jid="${esc(j.Job_ID)}">✓ Clear</button>`;
-  } else if(type==='review'){
-    btnHtml=`<button class="btn b-sm b-pur" data-action="revreq" data-jid="${esc(j.Job_ID)}">⭐ Requested</button>`;
-  } else if(type==='unschd'){
-    btnHtml=`<button class="btn b-sm b-amb" data-action="schedule" data-jid="${esc(j.Job_ID)}">📅 Set Date</button>`;
+  } else if (type === 'owed') {
+    btnHtml = `<button class="btn b-sm b-g" data-action="paid" data-jid="${esc(j.Job_ID)}">💰 Paid</button>`;
+  } else if (type === 'fu') {
+    btnHtml = `<button class="btn b-sm b-s" data-action="clearfu" data-jid="${esc(j.Job_ID)}">✓ Clear</button>`;
+  } else if (type === 'review') {
+    btnHtml = `<button class="btn b-sm b-pur" data-action="revreq" data-jid="${esc(j.Job_ID)}">⭐ Requested</button>`;
+  } else if (type === 'unschd') {
+    btnHtml = `<button class="btn b-sm b-amb" data-action="schedule" data-jid="${esc(j.Job_ID)}">📅 Set Date</button>`;
   }
 
-  const prePaid=(j.Payment_Status==='Paid'||j.Payment_Status==='Partial')&&j.Job_Status!=='Scheduled';
-  const prePaidAmt=parseFloat(j.PrePaid_Amount||0);
-  const totalJobAmt=parseFloat(j.Total_Amount||0);
-  const isPartialCard=j.Payment_Status==='Partial';
-  const cd=j.Completion_Date;
-  const showCd=(type==='owed'||type==='overdue'||type==='fu'||type==='review')&&cd;
-  return`<div class="jr ${type}" data-action="open-job" data-jid="${esc(j.Job_ID)}">
-    <div class="ji">${icons[type]||'📋'}</div>
+  const prePaid = (j.Payment_Status === 'Paid' || j.Payment_Status === 'Partial') && j.Job_Status !== 'Scheduled';
+  const prePaidAmt = parseFloat(j.PrePaid_Amount || 0);
+  const totalJobAmt = parseFloat(j.Total_Amount || 0);
+  const isPartialCard = j.Payment_Status === 'Partial';
+  const cd = j.Completion_Date;
+  const showCd = (type === 'owed' || type === 'overdue' || type === 'fu' || type === 'review') && cd;
+
+  return `<div class="jr ${type}" data-action="open-job" data-jid="${esc(j.Job_ID)}">
+    <div class="ji">${icons[type] || '📋'}</div>
     <div class="jd">
       <div class="jn">${esc(fullN(c))}</div>
-      <div class="jm">${esc(j.Service)} · ${dStr}${j.Time&&!j.Time.includes('1899')&&sd?' @ '+fmtT(j.Time):''}</div>
-      ${showCd?`<div class="jm note">✅ Completed ${fmtD(cd)}</div>`:''}
-      ${j.Job_Notes?`<div class="jm note">📝 ${esc(j.Job_Notes).substring(0,48)}${j.Job_Notes.length>48?'…':''}</div>`:''}
-      ${type==='overdue'?`<div class="jm note" style="color:var(--orange);font-style:normal;font-weight:800;">Was ${fmtD(sd)} — tap to update</div>`:''}
-      ${prePaid&&!isPartialCard?`<div class="jm note" style="color:var(--purple);font-style:normal;font-weight:800;">💜 Pre-paid${j.PrePaid_Reason?' · '+esc(j.PrePaid_Reason):''}</div>`:''}
-      ${isPartialCard?`<div class="jm note" style="color:var(--purple);font-style:normal;font-weight:800;">💜 $${prePaidAmt.toFixed(2)} deposit · <span style="color:var(--red);">$${(totalJobAmt-prePaidAmt).toFixed(2)} owed at door</span></div>`:''}
+      <div class="jm">${esc(j.Service)} · ${dStr}${j.Time && !j.Time.includes('1899') && sd ? ' @ ' + fmtT(j.Time) : ''} · ${hDisplay || '?'} hrs</div>
+      ${showCd ? `<div class="jm note">✅ Completed ${fmtD(cd)}</div>` : ''}
+      ${j.Job_Notes ? `<div class="jm note">📝 ${esc(j.Job_Notes).substring(0, 48)}${j.Job_Notes.length > 48 ? '…' : ''}</div>` : ''}
+      ${type === 'overdue' ? `<div class="jm note" style="color:var(--orange);font-style:normal;font-weight:800;">Was ${fmtD(sd)} — tap to update</div>` : ''}
+      ${prePaid && !isPartialCard ? `<div class="jm note" style="color:var(--purple);font-style:normal;font-weight:800;">💜 Pre-paid${j.PrePaid_Reason ? ' · ' + esc(j.PrePaid_Reason) : ''}</div>` : ''}
+      ${isPartialCard ? `<div class="jm note" style="color:var(--purple);font-style:normal;font-weight:800;">💜 $${prePaidAmt.toFixed(2)} deposit · <span style="color:var(--red);">$${(totalJobAmt - prePaidAmt).toFixed(2)} owed at door</span></div>` : ''}
     </div>
     <div class="jr-right">
       <div style="display:flex;align-items:center;gap:4px;justify-content:flex-end;white-space:nowrap;">${pillHtml}<span class="ja">$${amt.toFixed(2)}</span></div>
@@ -1356,44 +1360,51 @@ function setProfFilter(f){
   renderProfileJobs();
 }
 
-function profJobRow(j){
-  const isPaid=isPaidJob(j);const isSched=j.Job_Status==='Scheduled';
-  const tod=today();const sd=j.Scheduled_Date;
-  const isASAP=j.Scheduling_Type==='ASAP'&&!sd;
-  const isOverdue=isSched&&sd&&sd<tod;
-  const isPrePaid=isSched&&(j.Payment_Status==='Paid'||j.Payment_Status==='Partial');
-  const isPartialPrepay=isSched&&j.Payment_Status==='Partial';
-  const isDone=isArchived(j);
-  const tc=isDone?'paid':isOverdue?'overdue':isSched?'sched':isPaid?'paid':j.Job_Status==='Completed'?'owed':'sched';
-  const sp=isPrePaid?`<span class="pill p-pur">💜 Pre-Paid</span>`:
-    isPaid?`<span class="pill p-green">✅ ${esc(j.Payment_Method||'Paid')}</span>`:
-    isSched?(isASAP?`<span class="pill p-amb">⚡ ASAP</span>`:`<span class="pill p-blue">📅 Booked</span>`):
+function profJobRow(j) {
+  const isPaid = isPaidJob(j); const isSched = j.Job_Status === 'Scheduled';
+  const tod = today(); const sd = j.Scheduled_Date;
+  const isASAP = j.Scheduling_Type === 'ASAP' && !sd;
+  const isOverdue = isSched && sd && sd < tod;
+  const isPrePaid = isSched && (j.Payment_Status === 'Paid' || j.Payment_Status === 'Partial');
+  const isPartialPrepay = isSched && j.Payment_Status === 'Partial';
+  const isDone = isArchived(j);
+  const tc = isDone ? 'paid' : isOverdue ? 'overdue' : isSched ? 'sched' : isPaid ? 'paid' : j.Job_Status === 'Completed' ? 'owed' : 'sched';
+  
+  // FIX: Hours logic
+  const hDisplay = j.Job_Status === 'Completed' ? (j.Actual_Duration || j.Estimated_Hours) : j.Estimated_Hours;
+
+  const sp = isPrePaid ? `<span class="pill p-pur">💜 Pre-Paid</span>` :
+    isPaid ? `<span class="pill p-green">✅ ${esc(j.Payment_Method || 'Paid')}</span>` :
+    isSched ? (isASAP ? `<span class="pill p-amb">⚡ ASAP</span>` : `<span class="pill p-blue">📅 Booked</span>`) :
     `<span class="pill p-red">⏳ Unpaid</span>`;
-  const rev=j.Review_Status==='Received'?'<span class="pill p-green">⭐ Reviewed</span>':
-    j.Review_Status==='Requested'?'<span class="pill p-pur">⭐ Sent</span>':
-    j.Review_Status==='Pending'?'<span class="pill p-amb">⭐ Ask?</span>':'';
-  let acts='';
-  if(isSched&&isASAP){
-    acts+=`<button class="btn b-sm b-amb" data-action="schedule" data-jid="${esc(j.Job_ID)}">📅 Set Date</button>`;
-  } else if(isSched){
-    acts+=`<button class="btn b-sm b-bl" data-action="complete" data-jid="${esc(j.Job_ID)}">✅ Done</button>`;
+  
+  const rev = j.Review_Status === 'Received' ? '<span class="pill p-green">⭐ Reviewed</span>' :
+    j.Review_Status === 'Requested' ? '<span class="pill p-pur">⭐ Sent</span>' :
+    j.Review_Status === 'Pending' ? '<span class="pill p-amb">⭐ Ask?</span>' : '';
+
+  let acts = '';
+  if (isSched && isASAP) {
+    acts += `<button class="btn b-sm b-amb" data-action="schedule" data-jid="${esc(j.Job_ID)}">📅 Set Date</button>`;
+  } else if (isSched) {
+    acts += `<button class="btn b-sm b-bl" data-action="complete" data-jid="${esc(j.Job_ID)}">✅ Done</button>`;
   }
-  if(!isPaid&&j.Job_Status==='Completed')acts+=`<button class="btn b-sm b-g" data-action="p-paid" data-jid="${esc(j.Job_ID)}">💰 Paid</button>`;
-  if(isSched&&!isPrePaid)acts+=`<button class="btn b-sm b-s" data-action="p-prepay" data-jid="${esc(j.Job_ID)}">💜 Pre-Pay</button>`;
-  if(j.Job_Status==='Completed')acts+=`<button class="btn b-sm b-s" data-action="bookagain" data-jid="${esc(j.Job_ID)}">📋 Again</button>`;
-  return`<div class="jr ${tc}" data-action="open-job" data-jid="${esc(j.Job_ID)}">
-    <div class="ji">${isPaid?'✅':isOverdue?'🟠':isSched?'🔵':'🔴'}</div>
+  if (!isPaid && j.Job_Status === 'Completed') acts += `<button class="btn b-sm b-g" data-action="p-paid" data-jid="${esc(j.Job_ID)}">💰 Paid</button>`;
+  if (isSched && !isPrePaid) acts += `<button class="btn b-sm b-s" data-action="p-prepay" data-jid="${esc(j.Job_ID)}">💜 Pre-Pay</button>`;
+  if (j.Job_Status === 'Completed') acts += `<button class="btn b-sm b-s" data-action="bookagain" data-jid="${esc(j.Job_ID)}">📋 Again</button>`;
+
+  return `<div class="jr ${tc}" data-action="open-job" data-jid="${esc(j.Job_ID)}">
+    <div class="ji">${isPaid ? '✅' : isOverdue ? '🟠' : isSched ? '🔵' : '🔴'}</div>
     <div class="jd">
       <div class="jn">${esc(j.Service)}</div>
-      <div class="jm">${!sd?'⚡ ASAP':fmtD(sd)}${j.Time&&!j.Time.includes('1899')&&sd?' @ '+fmtT(j.Time):''}</div>
-      ${j.Completion_Date&&!isSched?`<div class="jm note">✅ Completed ${fmtD(j.Completion_Date)}</div>`:''}
-      ${j.Completion_Notes?`<div class="jm note">📋 ${esc(j.Completion_Notes).substring(0,52)}${j.Completion_Notes.length>52?'…':''}</div>`:''}
-      ${isOverdue?`<div class="jm note" style="color:var(--orange);font-style:normal;font-weight:800;">⚠️ Past due — tap to update</div>`:''}
-      ${isPrePaid&&!isPartialPrepay?`<div class="jm note" style="color:var(--purple);font-style:normal;font-weight:800;">💜 Pre-paid</div>`:''}
-      ${isPartialPrepay?`<div class="jm note" style="color:var(--purple);font-style:normal;font-weight:800;">💜 $${parseFloat(j.PrePaid_Amount).toFixed(2)} deposit · <span style="color:var(--red);">$${(parseFloat(j.Total_Amount||0)-parseFloat(j.PrePaid_Amount)).toFixed(2)} owed at door</span></div>`:''}
+      <div class="jm">${!sd ? '⚡ ASAP' : fmtD(sd)}${j.Time && !j.Time.includes('1899') && sd ? ' @ ' + fmtT(j.Time) : ''} · ${hDisplay || '?'} hrs</div>
+      ${j.Completion_Date && !isSched ? `<div class="jm note">✅ Completed ${fmtD(j.Completion_Date)}</div>` : ''}
+      ${j.Completion_Notes ? `<div class="jm note">📋 ${esc(j.Completion_Notes).substring(0, 52)}${j.Completion_Notes.length > 52 ? '…' : ''}</div>` : ''}
+      ${isOverdue ? `<div class="jm note" style="color:var(--orange);font-style:normal;font-weight:800;">⚠️ Past due — tap to update</div>` : ''}
+      ${isPrePaid && !isPartialPrepay ? `<div class="jm note" style="color:var(--purple);font-style:normal;font-weight:800;">💜 Pre-paid</div>` : ''}
+      ${isPartialPrepay ? `<div class="jm note" style="color:var(--purple);font-style:normal;font-weight:800;">💜 $${parseFloat(j.PrePaid_Amount).toFixed(2)} deposit · <span style="color:var(--red);">$${(parseFloat(j.Total_Amount || 0) - parseFloat(j.PrePaid_Amount)).toFixed(2)} owed at door</span></div>` : ''}
     </div>
     <div class="jr-right">
-      <div style="display:flex;align-items:center;gap:4px;justify-content:flex-end;white-space:nowrap;">${rev}${sp}<span class="ja">$${parseFloat(j.Total_Amount||0).toFixed(2)}</span></div>
+      <div style="display:flex;align-items:center;gap:4px;justify-content:flex-end;white-space:nowrap;">${rev}${sp}<span class="ja">$${parseFloat(j.Total_Amount || 0).toFixed(2)}</span></div>
       <div style="display:flex;flex-direction:column;gap:6px;align-items:flex-end;">${acts}</div>
     </div>
   </div>`;
@@ -1835,7 +1846,6 @@ async function submitJobEdit(btn, markPaid = false) {
     const j = S.jobs.find(x => x.Job_ID === jid);
     if (!j) throw new Error("Job not found");
 
-    // Helper: Only get value if field is visible/active
     const getVal = (id) => {
       const el = $(id);
       if (!el || el.offsetParent === null) return undefined;
@@ -1847,7 +1857,6 @@ async function submitJobEdit(btn, markPaid = false) {
     const time = $('je-time')?.value || '';
     const notes = $('je-notes')?.value.trim() || '';
     const comp = $('je-comp')?.value.trim() || '';
-
     const actHrs = getVal('je-hrs');
     const estHrs = getVal('je-est-hrs');
     const flatRate = getVal('je-flat');
@@ -1856,16 +1865,15 @@ async function submitJobEdit(btn, markPaid = false) {
     const isFlat = $('je-pr-f')?.classList.contains('on');
     const pType = isFlat ? 'Flat' : 'Hourly';
 
-    // LOCAL MATH FOR INSTANT UI UPDATE
-    const rate = hourlyRate();
-    const tax = taxRate();
+    const rate = parseFloat(S.biz.rate) || 50;
+    const tax = parseFloat(S.biz.tax_rate) || 0.13;
     let base = 0;
 
     if (isFlat) {
       base = parseFloat(flatRate || j.Flat_Rate || 0);
     } else {
-      const hSource = (j.Job_Status === 'Completed' || actHrs !== undefined) ? (actHrs || j.Actual_Hours) : (estHrs || j.Estimated_Hours);
-      base = parseFloat(hSource || 0) * rate;
+      const hSource = (j.Job_Status === 'Completed' || actHrs !== undefined) ? (actHrs || j.Actual_Duration) : (estHrs || j.Estimated_Hours);
+      base = (parseFloat(hSource) || 0) * rate;
     }
 
     const currentSur = parseFloat(sur !== undefined ? sur : (j.Surcharge || 0)) || 0;
@@ -1877,56 +1885,33 @@ async function submitJobEdit(btn, markPaid = false) {
 
     closeMo('m-job');
 
-    // Update the local object entirely
     Object.assign(j, {
-      Service: svc,
-      Scheduled_Date: date,
-      Time: time,
-      Job_Notes: notes,
+      Service: svc, Scheduled_Date: date, Time: time, Job_Notes: notes,
       Completion_Notes: comp || j.Completion_Notes,
-      Actual_Hours: actHrs !== undefined ? String(actHrs) : j.Actual_Hours,
+      Actual_Duration: actHrs !== undefined ? String(actHrs) : j.Actual_Duration,
       Estimated_Hours: estHrs !== undefined ? String(estHrs) : j.Estimated_Hours,
-      Pricing_Type: pType,
-      Flat_Rate: flatRate !== undefined ? String(flatRate) : j.Flat_Rate,
-      Surcharge: String(currentSur),
-      Additional_Cost: String(currentAdd),
-      Additional_Cost_Notes: $('je-addcost-notes')?.value.trim() || '',
-      Subtotal: sub.toFixed(2),
-      HST: hst.toFixed(2),
-      Total_Amount: tot.toFixed(2),
-      Follow_Up: S.followUp
+      Pricing_Type: pType, Flat_Rate: flatRate !== undefined ? String(flatRate) : j.Flat_Rate,
+      Surcharge: String(currentSur), Additional_Cost: String(currentAdd),
+      Total_Amount: tot.toFixed(2)
     });
-
-    if (markPaid) { j.Payment_Status = 'Paid'; j.Payment_Method = $('je-pm')?.value || 'Cash'; }
 
     if (!S.isDemo) {
       await gasCall({
-        action: 'updateJobDetails',
-        jobId: jid,
+        action: 'updateJobDetails', jobId: jid,
         svc, date, time, notes, comp, hrs: actHrs,
-        photos: $('je-photos')?.value.trim() || '',
-        revStatus: $('je-rev')?.value || j.Review_Status,
-        followUp: S.followUp,
-        markPaid, method: $('je-pm')?.value || 'Cash',
-        additionalCost: addCost,
-        additionalCostNotes: $('je-addcost-notes')?.value.trim() || '',
-        estimatedHours: estHrs,
-        flatRate: flatRate,
-        surcharge: sur,
-        pricingType: pType
+        estimatedHours: estHrs, flatRate: flatRate,
+        surcharge: sur, additionalCost: addCost, markPaid
       });
     }
 
     try { localStorage.removeItem('smhq_cache'); } catch (e) { }
-
     if (S.view === 'dashboard') renderDash();
     else if (S.view === 'profile') openProfile(j.Client_ID);
-
-    showToast(markPaid ? '💰 Saved + paid' : '✓ Job updated');
+    showToast('✓ Job updated');
 
   } catch (err) {
     console.error("Save Error:", err);
-    showToast("⚠️ Error saving changes");
+    showToast("⚠️ Error saving");
   } finally {
     _isSaving = false;
     if (btn) { btn.disabled = false; btn.textContent = origText; }
