@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <!--
-  SUPERMOM FOR HIRE — CRM v3.7 (Production Release Testing)
+  SUPERMOM FOR HIRE — CRM v3.9 (Production Release Testing)
 -->
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
@@ -1467,7 +1467,7 @@ function openCompleteModal(jid){
       ${j.Job_Notes?`<br>📝 ${esc(j.Job_Notes)}`:''}
     </div>
     <div class="fg"><label class="fl">✏️ Actual Hours Worked</label>
-      <input class="fi" id="cp-hrs" type="text" inputmode="decimal" pattern="[0-9\.]*" value="${esc(j.Actual_Hours||j.Estimated_Hours||'')}" placeholder="How long did it take?" oninput="calcJobTotal()"></div>
+      <input class="fi" id="cp-hrs" type="text" inputmode="decimal" pattern="[0-9\.]*" value="${esc(j.Actual_Duration||j.Estimated_Hours||'')}" placeholder="How long did it take?" oninput="calcJobTotal()"></div>
     <div class="fg"><label class="fl">📋 Completion Notes</label>
       <textarea class="ft" id="cp-notes" placeholder="How did it go? Notes for next visit?">${esc(j.Completion_Notes||'')}</textarea></div>
     <div class="fg"><label class="fl">➕ Additional Costs ($)</label>
@@ -1618,7 +1618,7 @@ async function submitComplete(btn){
   const j=S.jobs.find(x=>x.Job_ID===jid);
   if(j){
     j.Job_Status='Completed';j.Completion_Date=today();
-    j.Actual_Hours=hrs;j.Completion_Notes=notes;j.Photo_Links=photos;j.Follow_Up=S.followUp;
+    j.Actual_Duration=hrs;j.Completion_Notes=notes;j.Photo_Links=photos;j.Follow_Up=S.followUp;
     if(S.reqRev)j.Review_Status='Pending';
     j.Total_Amount=newTotal.toFixed(2);
     if(addCost>0){j.Additional_Cost=String(addCost);j.Additional_Cost_Notes=addCostNotes;}
@@ -1713,7 +1713,7 @@ function openJobModal(jid){
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:13px;">
           <div><div style="color:var(--txt3);font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;">Date</div><div style="font-weight:700;color:var(--txt);">${fmtDFull(sd)}</div></div>
           <div><div style="color:var(--txt3);font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;">Time</div><div style="font-weight:700;color:var(--txt);">${j.Time&&!j.Time.includes('1899')?fmtT(j.Time):'—'}</div></div>
-          <div><div style="color:var(--txt3);font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;">Actual Hours</div><div style="font-weight:700;color:var(--txt);">${j.Actual_Hours||'—'}</div></div>
+          <div><div style="color:var(--txt3);font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;">Actual Hours</div><div style="font-weight:700;color:var(--txt);">${j.Actual_Duration||'—'}</div></div>
           <div><div style="color:var(--txt3);font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;">Total</div><div style="font-weight:700;color:var(--green);">$${parseFloat(j.Total_Amount||0).toFixed(2)}</div></div>
         </div>
         ${addCost>0?`<div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--green-b);font-size:13px;color:var(--txt2);">
@@ -1781,7 +1781,7 @@ function openJobModalEdit(){
     <div class="fg"><label class="fl">Start Time</label><input class="fi" id="je-time" type="time" value="${esc(j.Time&&!j.Time.includes('1899')?j.Time:'09:00')}"></div>
     <div class="fg"><label class="fl">Job Notes</label><textarea class="ft" id="je-notes">${esc(j.Job_Notes||'')}</textarea></div>
     <div class="fg"><label class="fl">Completion Notes</label><textarea class="ft" id="je-comp">${esc(j.Completion_Notes||'')}</textarea></div>
-    <div class="fg"><label class="fl">Actual Hours</label><input class="fi" id="je-hrs" type="text" inputmode="decimal" pattern="[0-9\.]*" value="${esc(j.Actual_Hours||'')}"></div>
+    <div class="fg"><label class="fl">Actual Hours</label><input class="fi" id="je-hrs" type="text" inputmode="decimal" pattern="[0-9\.]*" value="${esc(j.Actual_Duration||'')}"></div>
     <div class="fg"><label class="fl">Additional Costs ($)</label>
       <input class="fi" id="je-addcost" type="text" inputmode="decimal" pattern="[0-9\.]*" value="${esc(j.Additional_Cost||'')}" placeholder="e.g. 25.00"></div>
     <div class="fg"><label class="fl">Additional Cost Description</label>
@@ -1918,22 +1918,29 @@ async function submitJobEdit(btn, markPaid = false) {
   }
 }
 async function deleteJob(){
-  closeMo('m-del');const jid=S.jobModal;
-  // 1. Remove from ALL local state immediately
-  S.jobs=S.jobs.filter(x=>x.Job_ID!==jid);
-  S.financials=S.financials.filter(x=>x.Job_ID!==jid);
-  // 2. Wipe cache — deleted job must never come back from localStorage
-  try{localStorage.removeItem('smhq_cache');}catch(e){}
-  // 3. Re-render immediately — local state is authoritative
-  refreshData();showToast('🗑️ Job deleted');
-  // 4. Tell GAS to soft-delete in background — NO loadAllData() after
-  // loadAllData was re-fetching from GAS before Is_Deleted write was committed,
-  // causing the job to reappear. Local state after filter IS the truth.
-  // Track as pending so ↺ refresh can't bring it back before GAS write completes
+  const jid = S.jobModal;
+  if(!jid) return;
+
+  // 1. BLOCK the ghosting immediately
   _pendingDeletes.jobs.add(jid);
-  if(!S.isDemo) gasCall({action:'deleteJob',jobId:jid}).then(()=>{
-    _pendingDeletes.jobs.delete(jid); // confirmed — no longer needed
-  });
+  
+  // 2. Clear UI
+  closeMo('m-del');
+  closeMo('m-job');
+  
+  // 3. Remove from local memory
+  S.jobs = S.jobs.filter(x => x.Job_ID !== jid);
+  S.financials = S.financials.filter(x => x.Job_ID !== jid);
+  
+  try { localStorage.removeItem('smhq_cache'); } catch(e) {}
+  
+  refreshData();
+  showToast('🗑️ Deleting...');
+
+  // 4. Tell server
+  if(!S.isDemo) {
+    await gasCall({action:'deleteJob', jobId:jid});
+  }
 }
 
 async function markRevRequested(jid){
@@ -2233,7 +2240,7 @@ async function submitJob(){
     Subtotal:String(base),HST:hst.toFixed(2),Total_Amount:tot.toFixed(2),
     Job_Status:'Scheduled',Follow_Up:'No',
     Scheduling_Type:schedType==='hard'?'Hard Date':schedType==='asap'?'ASAP':'By Date',
-    Job_Notes:notes,Completion_Notes:'',Actual_Hours:'',Additional_Cost:'',Additional_Cost_Notes:'',
+    Job_Notes:notes,Completion_Notes:'',Actual_Duration:'',Additional_Cost:'',Additional_Cost_Notes:'',
     Review_Status:'',Review_Notes:'',Payment_Status:'',Payment_Method:'',
     Photo_Links:'',Created_Date:today(),PrePaid_Reason:''};
     
