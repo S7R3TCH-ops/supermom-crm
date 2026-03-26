@@ -764,22 +764,25 @@ function loadBizConfig(){
     const s = localStorage.getItem('smhq_biz');
     if (s) {
       const p = JSON.parse(s);
+      // Merge saved settings into our state
       S.biz = Object.assign(JSON.parse(JSON.stringify(DEFAULT_BIZ)), p);
     }
   } catch(e) {}
 
-  // --- ADD THIS LINE HERE ---
-  // If there is no logo in the settings, or if you want to FORCE the hardcoded one:
+  // Fallback to the hardcoded logo if none is set in the database
   if (!S.biz.logo || S.biz.logo === "") {
      S.biz.logo = GLOBAL_LOGO;
   }
-  // --------------------------
 
+  // Update the UI elements
   syncBizUI();
   updateHeaderBrand();
+
+  // Update the Hourly button text in the Booking view
   const pb = $('pr-h');
   if (pb) pb.textContent = `⏱ Hourly ($${S.biz.rate || 50}/hr)`;
 }
+
 function syncBizUI(){
   if($('cfg-biz'))$('cfg-biz').value=S.biz.biz||'';
   if($('cfg-owner'))$('cfg-owner').value=S.biz.owner||'';
