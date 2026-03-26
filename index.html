@@ -693,8 +693,9 @@ const DEFAULT_BIZ = {
 };
 
 function taxRate() {
-  // If tax is not enabled, the rate is effectively 0
-  if (S.biz.tax_enabled === 'TRUE') {
+  // Defensive check: handle string or boolean from database
+  const enabled = String(S.biz.tax_enabled).toUpperCase();
+  if (enabled === 'TRUE') {
     return parseFloat(S.biz.tax_rate) || 0.13;
   }
   return 0;
@@ -831,21 +832,24 @@ function syncBizUI(){
 function renderDash(){
   renderEarnBars();
   const tod = today();
-  const thisMonth = new Date().toISOString().slice(0, 7); // e.g., "2024-03"
+  // Get current month in YYYY-MM format
+  const now = new Date();
+  const thisMonth = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0');
 
-  // --- 1. MONEY CALCULATIONS (The Source of Truth) ---
-  
-  // COLLECTED: Sum of all financial records marked "Paid"
+  // COLLECTED
   const allPaidInvoices = S.financials.filter(f => f.Status === 'Paid');
-  const paidThisMonth = allPaidInvoices.filter(f => String(f.Paid_Date).startsWith(thisMonth));
+  const paidThisMonth = allPaidInvoices.filter(f => {
+    if (!f.Paid_Date) return false;
+    return String(f.Paid_Date).startsWith(thisMonth);
+  });
+  
   const displayPaid = S.moneyFilter === 'month' ? paidThisMonth : allPaidInvoices;
   const totalCollected = displayPaid.reduce((sum, f) => sum + parseFloat(f.Amount || 0), 0);
 
-  // OWED: Any job that is COMPLETED but NOT PAID
+  // OWED
   const owedJobs = S.jobs.filter(j => j.Job_Status === 'Completed' && !isPaidJob(j));
   const totalOwed = owedJobs.reduce((sum, j) => sum + parseFloat(j.Total_Amount || 0), 0);
 
-  // Update the UI Money Cards
   $('m-owed').textContent = '$' + totalOwed.toFixed(2);
   $('m-owed-s').textContent = owedJobs.length + ' unpaid job(s)';
   $('m-paid').textContent = '$' + totalCollected.toFixed(2);
@@ -856,8 +860,7 @@ function renderDash(){
   $('mf-all')?.classList.toggle('on', S.moneyFilter === 'all');
 
   // --- 2. TODAY'S JOBS ---
-  const now = new Date();
-  const todayJobs = S.jobs.filter(j => j.Job_Status === 'Scheduled' && j.Scheduled_Date === tod)
+    const todayJobs = S.jobs.filter(j => j.Job_Status === 'Scheduled' && j.Scheduled_Date === tod)
     .map(j => {
       let isPastDue = false;
       if(j.Time && !j.Time.includes('1899')){
@@ -997,26 +1000,28 @@ function handleLogoUpload(input){
   const inp=$('logo-file-inp');if(inp)inp.value='';
   showToast('✓ Logo removed — tap Save');
 }
-function saveBizConfig(){
-  // 1. Gather current values from the form
-  S.biz.biz = $('cfg-biz').value.trim() || 'Supermom for Hire';
-  S.biz.owner = $('cfg-owner').value.trim() || 'Sandra';
+function saveBizConfig() {
+  S.biz.biz = $('cfg-biz').value.trim();
+  S.biz.owner = $('cfg-owner').value.trim();
   S.biz.rate = parseFloat($('cfg-rate').value) || 50;
   S.biz.hst_num = $('cfg-hst').value.trim();
-  // Note: S.biz.tax_enabled is updated by the setTaxToggle function in Step 4
-
-  // 2. Save to LocalStorage for offline speed
-  try { localStorage.setItem('smhq_biz', JSON.stringify(S.biz)); } catch(e) {}
-
-  // 3. Send to Google Sheets CONFIG tab
-  if(!S.isDemo){
-    gasCall({action:'updateBizConfig', ...S.biz});
+  // S.biz.tax_enabled is set by the button click
+  
+  if(!S.isDemo) {
+    gasCall({
+      action: 'updateBizConfig',
+      biz: S.biz.biz,
+      owner: S.biz.owner,
+      rate: S.biz.rate,
+      hst_num: S.biz.hst_num,
+      tax_rate: S.biz.tax_rate,
+      tax_enabled: S.biz.tax_enabled, // <--- MUST MATCH Code.gs
+      logo: S.biz.logo
+    });
   }
-
-  // 4. Clean up UI
-  updateHeaderBrand();
-  calc(); // Recalculate totals on booking screen
-  showToast('✓ Settings and Tax preference saved');
+  localStorage.setItem('smhq_biz', JSON.stringify(S.biz));
+  showToast('✓ Settings saved');
+  calc(); 
 }
 function hourlyRate(){return S.biz.rate||50;}
 function taxRate(){return parseFloat(S.biz.tax_rate)||0.13;}
@@ -2277,21 +2282,43 @@ function setPrice(t){
   const hint=$('svc-price-hint');if(hint)hint.style.display='none';
   calc();
 }
+
 function calc(){
-  const rate=hourlyRate();
-  let base=0;
-  if(S.priceType==='Hourly'){const hrs=parseFloat($('bj-hrs')?.value)||0;base=hrs*rate;}
-  else{base=parseFloat($('bj-flat')?.value)||0;}
-  const sur=parseFloat($('bj-sur')?.value)||0;
-  const hst=(base+sur)*taxRate();const tot=base+sur+hst;
-  if($('c-base'))$('c-base').textContent='$'+base.toFixed(2);
-  if($('c-sur'))$('c-sur').textContent='$'+sur.toFixed(2);
-  if($('c-hst'))$('c-hst').textContent='$'+hst.toFixed(2);
-  if($('c-tot'))$('c-tot').textContent='$'+tot.toFixed(2);
-  const taxPct=Math.round(taxRate()*100);
-  document.querySelectorAll('.pr span').forEach(el=>{if(el.textContent.includes('HST'))el.textContent='HST ('+taxPct+'%)';});
-  const fh=document.querySelector('.fh');if(fh&&fh.textContent.includes('HST'))fh.textContent='HST ('+taxPct+'%) added automatically';
+  const rate = hourlyRate();
+  const tRate = taxRate(); // Get 0 or 0.13
+  let base = 0;
+  
+  if(S.priceType === 'Hourly'){
+    const hrs = parseFloat($('bj-hrs')?.value) || 0;
+    base = hrs * rate;
+  } else {
+    base = parseFloat($('bj-flat')?.value) || 0;
+  }
+  
+  const sur = parseFloat($('bj-sur')?.value) || 0;
+  const subtotal = base + sur;
+  const hst = subtotal * tRate;
+  const tot = subtotal + hst;
+
+  if($('c-base')) $('c-base').textContent = '$' + base.toFixed(2);
+  if($('c-sur')) $('c-sur').textContent = '$' + sur.toFixed(2);
+  
+  // HIDE HST ROW IF TAX IS OFF
+  const hstRow = $('c-hst')?.closest('.pr');
+  if (hstRow) {
+    if (tRate === 0) {
+      hstRow.style.display = 'none';
+    } else {
+      hstRow.style.display = 'flex';
+      $('c-hst').textContent = '$' + hst.toFixed(2);
+      const taxPct = Math.round(tRate * 100);
+      hstRow.querySelector('span').textContent = `HST (${taxPct}%)`;
+    }
+  }
+
+  if($('c-tot')) $('c-tot').textContent = '$' + tot.toFixed(2);
 }
+
 async function submitJob(){
   if(_isSaving)return;
   _isSaving = true;
