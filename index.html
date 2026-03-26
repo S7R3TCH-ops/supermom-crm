@@ -2405,21 +2405,32 @@ function clearSvcPrice(svc){
 }
 
 function bookAgain(jid){
-  const j=getJob(jid);if(!j.Job_ID)return;
-  popCliDrop();popLists();
-  $('bj-cli').value=j.Client_ID||'';
+  const j=getJob(jid); if(!j.Job_ID)return;
+  popCliDrop(); popLists();
+  
+  $('bj-cli').value = j.Client_ID || '';
   onCliSelect();
-  const svcEl=$('bj-svc');if(svcEl)svcEl.value=j.Service||'';
+  
+  const svcEl = $('bj-svc');
+  if(svcEl) svcEl.value = j.Service || '';
   onSvcChange();
-  if(j.Pricing_Type==='Flat'){setPrice('Flat');if($('bj-flat'))$('bj-flat').value=j.Flat_Rate||'';}
-  else{setPrice('Hourly');if($('bj-hrs'))$('bj-hrs').value=j.Estimated_Hours||'2';}
-  if($('bj-sur'))$('bj-sur').value=parseFloat(j.Surcharge||0)>0?j.Surcharge:'';
-  if($('bj-notes'))$('bj-notes').value=j.Job_Notes||'';
-  if($('bj-sur'))$('bj-sur').value = parseFloat(j.Surcharge || 0) > 0 ? j.Surcharge : '';
+  
+  if(j.Pricing_Type === 'Flat'){
+    setPrice('Flat');
+    if($('bj-flat')) $('bj-flat').value = j.Flat_Rate || '';
+  } else {
+    setPrice('Hourly');
+    if($('bj-hrs')) $('bj-hrs').value = j.Estimated_Hours || '2';
+  }
+  
+  if($('bj-sur')) $('bj-sur').value = (parseFloat(j.Surcharge || 0) > 0) ? j.Surcharge : '';
+  if($('bj-notes')) $('bj-notes').value = j.Job_Notes || '';
+  
   calc();
-  if($('bj-date'))$('bj-date').value='';
+  if($('bj-date')) $('bj-date').value = '';
   setSched('hard');
-  navTo('book-job',true);
+  
+  navTo('book-job', true);
   showToast('📋 Pre-filled from last job — pick a new date');
 }
 
