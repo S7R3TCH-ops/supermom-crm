@@ -2620,12 +2620,6 @@ function jrHTML(j, type) {
   </div>`;
 }
 
-/**
- * isArchived: Logic to determine if a job should be hidden in the "Completed" list
- */
-function isArchived(j) {
-  return j.Job_Status === 'Completed' && isPaidJob(j) && j.Follow_Up !== 'Yes' && j.Review_Status !== 'Pending';
-}  
 </script>
 </body>
 </html>
