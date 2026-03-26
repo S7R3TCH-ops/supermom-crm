@@ -2558,6 +2558,74 @@ async function deleteJob() {
   else if (S.view === 'profile') renderProfileJobs();
   if (!S.isDemo) await gasCall({ action: 'deleteJob', jobId: jid });
 }
+
+// --- DASHBOARD HELPERS ---
+/**
+ * dsec: Dashboard Section drawer
+ * Handles showing/hiding a section and filling it with job rows
+ */
+function dsec(lid, sid, jobs, type) {
+  const l = $(lid);
+  const s = $(sid);
+  if (!l || !s) return;
+  
+  if (!jobs || jobs.length === 0) {
+    s.style.display = 'none';
+    return;
+  }
+  
+  s.style.display = '';
+  l.innerHTML = jobs.map(j => jrHTML(j, type)).join('');
+}
+
+/**
+ * jrHTML: Job Row HTML Generator
+ * Standardizes how a job looks across all dashboard sections
+ */
+function jrHTML(j, type) {
+  const c = getCli(j.Client_ID);
+  const amt = parseFloat(j.Total_Amount || 0);
+  const sd = j.Scheduled_Date;
+  const isASAP = j.Scheduling_Type === 'ASAP' && !sd;
+  const dStr = isASAP ? '⚡ ASAP' : fmtD(sd);
+  const icons = { owed: '🔴', sched: '🔵', fu: '🔔', review: '⭐', overdue: '🟠', unschd: '🗓️', paid: '✅' };
+
+  // Use Actual Duration if completed, otherwise Estimated
+  const hDisplay = j.Job_Status === 'Completed' ? (j.Actual_Duration || j.Estimated_Hours) : j.Estimated_Hours;
+
+  let btnHtml = '';
+  if (type === 'sched' || type === 'overdue' || type === 'unschd') {
+    btnHtml = isASAP ? 
+      `<button class="btn b-sm b-amb" data-action="schedule" data-jid="${esc(j.Job_ID)}">📅 Set Date</button>` :
+      `<button class="btn b-sm b-bl" data-action="complete" data-jid="${esc(j.Job_ID)}">✅ Done</button>`;
+  } else if (type === 'owed') {
+    btnHtml = `<button class="btn b-sm b-g" data-action="paid" data-jid="${esc(j.Job_ID)}">💰 Paid</button>`;
+  } else if (type === 'fu') {
+    btnHtml = `<button class="btn b-sm b-s" data-action="clearfu" data-jid="${esc(j.Job_ID)}">✓ Clear</button>`;
+  } else if (type === 'review') {
+    btnHtml = `<button class="btn b-sm b-pur" data-action="revreq" data-jid="${esc(j.Job_ID)}">⭐ Sent</button>`;
+  }
+
+  return `<div class="jr ${type}" data-action="open-job" data-jid="${esc(j.Job_ID)}">
+    <div class="ji">${icons[type] || '📋'}</div>
+    <div class="jd">
+      <div class="jn">${esc(fullN(c))}</div>
+      <div class="jm">${esc(j.Service)} · ${dStr} · ${hDisplay || '?'} hrs</div>
+      ${j.Job_Notes ? `<div class="jm note">📝 ${esc(j.Job_Notes).substring(0, 40)}...</div>` : ''}
+    </div>
+    <div class="jr-right">
+      <div class="ja">$${amt.toFixed(2)}</div>
+      ${btnHtml}
+    </div>
+  </div>`;
+}
+
+/**
+ * isArchived: Logic to determine if a job should be hidden in the "Completed" list
+ */
+function isArchived(j) {
+  return j.Job_Status === 'Completed' && isPaidJob(j) && j.Follow_Up !== 'Yes' && j.Review_Status !== 'Pending';
+}  
 </script>
 </body>
 </html>
