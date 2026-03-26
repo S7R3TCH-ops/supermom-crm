@@ -582,6 +582,13 @@ body.modal-open #scroll{overflow:hidden;}
     <div class="fg"><label class="fl">Hourly Rate ($)</label><input class="fi" id="cfg-rate" type="text" inputmode="decimal" pattern="[0-9\.]*" value="50"></div>
     <div class="fg"><label class="fl">HST Number (optional)</label><input class="fi" id="cfg-hst" type="text" placeholder="123456789 RT0001"></div>
     <div class="fg">
+      <label class="fl">Tax Collection</label>
+      <div class="tr">
+        <button class="tb" id="tax-on" onclick="setTaxToggle('TRUE')">Tax ON (13%)</button>
+        <button class="tb" id="tax-off" onclick="setTaxToggle('FALSE')">Tax OFF (0%)</button>
+      </div>
+    </div>
+    <div class="fg">
       <label class="fl">Business Logo</label>
       <div class="logo-upload-row" style="display:none;">
         <div id="logo-thumb-empty" class="logo-thumb-empty">🏠</div>
@@ -680,9 +687,19 @@ const DEFAULT_BIZ = {
   rate: 50,
   hst_num: '',
   tax_rate: 0.13,
+  tax_enabled: 'FALSE', // This is the new flag
   service_prices: {},
   logo: GLOBAL_LOGO 
 };
+
+function taxRate() {
+  // If tax is not enabled, the rate is effectively 0
+  if (S.biz.tax_enabled === 'TRUE') {
+    return parseFloat(S.biz.tax_rate) || 0.13;
+  }
+  return 0;
+}
+
 let S={
   clients:[],jobs:[],financials:[],
   lists:JSON.parse(JSON.stringify(DL)),
@@ -784,17 +801,138 @@ function loadBizConfig(){
 }
 
 function syncBizUI(){
-  if($('cfg-biz'))$('cfg-biz').value=S.biz.biz||'';
-  if($('cfg-owner'))$('cfg-owner').value=S.biz.owner||'';
-  if($('cfg-rate'))$('cfg-rate').value=S.biz.rate||50;
-  if($('cfg-hst'))$('cfg-hst').value=S.biz.hst_num||'';
-  const hasLogo=!!(S.biz.logo);
-  const emptyEl=$('logo-thumb-empty');const imgEl=$('logo-thumb-img');const removeBtn=$('logo-remove-btn');
-  if(emptyEl&&imgEl){
-    if(hasLogo){imgEl.src=S.biz.logo;imgEl.classList.remove('hidden');emptyEl.style.display='none';if(removeBtn)removeBtn.style.display='';}
-    else{imgEl.classList.add('hidden');emptyEl.style.display='';if(removeBtn)removeBtn.style.display='none';}
+  if($('cfg-biz')) $('cfg-biz').value = S.biz.biz || '';
+  if($('cfg-owner')) $('cfg-owner').value = S.biz.owner || '';
+  if($('cfg-rate')) $('cfg-rate').value = S.biz.rate || 50;
+  if($('cfg-hst')) $('cfg-hst').value = S.biz.hst_num || '';
+  
+  // Highlight the correct Tax button
+  if($('tax-on')) $('tax-on').classList.toggle('on', S.biz.tax_enabled === 'TRUE');
+  if($('tax-off')) $('tax-off').classList.toggle('on', S.biz.tax_enabled === 'FALSE');
+
+  const hasLogo = !!(S.biz.logo);
+  const emptyEl = $('logo-thumb-empty'); 
+  const imgEl = $('logo-thumb-img'); 
+  const removeBtn = $('logo-remove-btn');
+  if(emptyEl && imgEl){
+    if(hasLogo){
+      imgEl.src = S.biz.logo;
+      imgEl.classList.remove('hidden');
+      emptyEl.style.display = 'none';
+      if(removeBtn) removeBtn.style.display = '';
+    } else {
+      imgEl.classList.add('hidden');
+      emptyEl.style.display = '';
+      if(removeBtn) removeBtn.style.display = 'none';
+    }
   }
 }
+
+function renderDash(){
+  renderEarnBars();
+  const tod = today();
+  const thisMonth = new Date().toISOString().slice(0, 7); // e.g., "2024-03"
+
+  // --- 1. MONEY CALCULATIONS (The Source of Truth) ---
+  
+  // COLLECTED: Sum of all financial records marked "Paid"
+  const allPaidInvoices = S.financials.filter(f => f.Status === 'Paid');
+  const paidThisMonth = allPaidInvoices.filter(f => String(f.Paid_Date).startsWith(thisMonth));
+  const displayPaid = S.moneyFilter === 'month' ? paidThisMonth : allPaidInvoices;
+  const totalCollected = displayPaid.reduce((sum, f) => sum + parseFloat(f.Amount || 0), 0);
+
+  // OWED: Any job that is COMPLETED but NOT PAID
+  const owedJobs = S.jobs.filter(j => j.Job_Status === 'Completed' && !isPaidJob(j));
+  const totalOwed = owedJobs.reduce((sum, j) => sum + parseFloat(j.Total_Amount || 0), 0);
+
+  // Update the UI Money Cards
+  $('m-owed').textContent = '$' + totalOwed.toFixed(2);
+  $('m-owed-s').textContent = owedJobs.length + ' unpaid job(s)';
+  $('m-paid').textContent = '$' + totalCollected.toFixed(2);
+  $('m-paid-s').textContent = displayPaid.length + (S.moneyFilter === 'month' ? ' paid this month' : ' paid total');
+
+  // Toggle button highlights
+  $('mf-month')?.classList.toggle('on', S.moneyFilter === 'month');
+  $('mf-all')?.classList.toggle('on', S.moneyFilter === 'all');
+
+  // --- 2. TODAY'S JOBS ---
+  const now = new Date();
+  const todayJobs = S.jobs.filter(j => j.Job_Status === 'Scheduled' && j.Scheduled_Date === tod)
+    .map(j => {
+      let isPastDue = false;
+      if(j.Time && !j.Time.includes('1899')){
+        try {
+          const [h, m] = j.Time.split(':');
+          const start = new Date(); start.setHours(parseInt(h), parseInt(m), 0, 0);
+          const hrs = parseFloat(j.Estimated_Hours || 1);
+          const end = new Date(start.getTime() + hrs * 3600000);
+          isPastDue = end < now;
+        } catch(e) {}
+      }
+      return {...j, _pastDue: isPastDue};
+    })
+    .sort((a, b) => {
+      if (a._pastDue && !b._pastDue) return -1;
+      if (!a._pastDue && b._pastDue) return 1;
+      return (a.Time || '').localeCompare(b.Time || '');
+    });
+
+  $('t-ct').textContent = todayJobs.length ? todayJobs.length + ' job(s) today' : 'No jobs today — enjoy your day! 🌸';
+  
+  const upNextId = todayJobs.find(j => !j._pastDue)?.Job_ID || null;
+  $('today-jobs-list').innerHTML = todayJobs.map(j => {
+    const c = getCli(j.Client_ID);
+    const pd = j._pastDue;
+    const isUpNext = !pd && j.Job_ID === upNextId;
+    return `<div class="today-job" data-action="open-job" data-jid="${esc(j.Job_ID)}" style="${pd?'border-left:3px solid var(--orange);background:rgba(192,88,0,.07);':isUpNext?'border-left:3px solid var(--pink);':''}">
+      <div class="tj-time" style="${pd?'color:var(--orange);':isUpNext?'color:var(--pink);font-weight:900;':''}">${j.Time && !j.Time.includes('1899') ? fmtT(j.Time) : 'All day'}</div>
+      <div class="tj-info">
+        <div class="tj-name">${esc(fullN(c))}${pd?` <span class="pill p-ora" style="font-size:9px;">⚠️ Past Due</span>`:isUpNext?` <span class="pill p-pink" style="font-size:9px;">⚡ Up Next</span>`:''}</div>
+        <div class="tj-svc">${esc(j.Service)}</div>
+      </div>
+      <button class="btn b-sm b-p" data-action="complete" data-jid="${esc(j.Job_ID)}">✅ Done</button>
+    </div>`;
+  }).join('');
+
+  // --- 3. UPCOMING / OVERDUE / UN-SCHEDULED ---
+  const allFuture = S.jobs.filter(j => j.Job_Status === 'Scheduled' && j.Scheduled_Date > tod && j.Scheduled_Date !== '')
+    .sort((a, b) => (a.Scheduled_Date || '').localeCompare(b.Scheduled_Date || ''));
+  
+  dsec('d-upcoming', 'd-upcoming-sec', allFuture.slice(0, 5), 'sched');
+  
+  const unschd = S.jobs.filter(j => j.Job_Status === 'Scheduled' && (!j.Scheduled_Date || j.Scheduled_Date === ''));
+  dsec('d-unschd', 'd-unschd-sec', unschd, 'unschd');
+
+  const overdue = S.jobs.filter(j => j.Job_Status === 'Scheduled' && j.Scheduled_Date !== '' && j.Scheduled_Date < tod)
+    .sort((a, b) => (a.Scheduled_Date || '').localeCompare(b.Scheduled_Date || ''));
+  dsec('d-overdue', 'd-overdue-sec', overdue, 'overdue');
+
+  // --- 4. OTHER DASHBOARD SECTIONS ---
+  dsec('d-owed', 'd-owed-sec', owedJobs, 'owed');
+  dsec('d-fu', 'd-fu-sec', S.jobs.filter(j => j.Follow_Up === 'Yes' && j.Job_Status !== 'Cancelled'), 'fu');
+  dsec('d-rev', 'd-rev-sec', S.jobs.filter(j => j.Review_Status === 'Pending' && j.Job_Status === 'Completed'), 'review');
+
+  // --- 5. RECENTLY COMPLETED (Archive) ---
+  const archived = S.jobs.filter(isArchived).sort((a, b) => (b.Completion_Date || '').localeCompare(a.Completion_Date || ''));
+  dsec('d-arc', 'd-arc-sec', archived.slice(0, 3), 'paid');
+
+  // --- 6. LEADS ---
+  const leads = S.clients.filter(c => c.Status === 'Lead');
+  if(!leads.length) $('d-lead-sec').style.display = 'none';
+  else {
+    $('d-lead-sec').style.display = '';
+    $('d-lead').innerHTML = leads.map(c => `
+      <div class="jr lead">
+        <div class="ji">🟡</div>
+        <div class="jd" data-action="open-profile" data-cid="${esc(c.Client_ID)}" style="cursor:pointer;">
+          <div class="jn">${esc(fullN(c))}</div>
+          <div class="jm">${esc(c.Phone || 'No phone')} · ${esc(c.Referral_Source || '—')}</div>
+        </div>
+        <button class="btn b-sm b-p" data-action="booklead" data-cid="${esc(c.Client_ID)}">📅 Book</button>
+      </div>`).join('');
+  }
+}
+
 function updateHeaderBrand(){
   const logoEl = document.getElementById('brand-logo'); 
   const nameEl = document.getElementById('brand-name-txt');
@@ -860,17 +998,25 @@ function handleLogoUpload(input){
   showToast('✓ Logo removed — tap Save');
 }
 function saveBizConfig(){
-  S.biz={biz:$('cfg-biz').value.trim()||'Supermom for Hire',owner:$('cfg-owner').value.trim()||'Sandra',rate:parseFloat($('cfg-rate').value)||50,hst_num:$('cfg-hst').value.trim(),tax_rate:parseFloat(S.biz.tax_rate)||0.13,service_prices:S.biz.service_prices||{},logo:S.biz.logo||''};
-  try{localStorage.setItem('smhq_biz',JSON.stringify(S.biz));}catch(e){}
+  // 1. Gather current values from the form
+  S.biz.biz = $('cfg-biz').value.trim() || 'Supermom for Hire';
+  S.biz.owner = $('cfg-owner').value.trim() || 'Sandra';
+  S.biz.rate = parseFloat($('cfg-rate').value) || 50;
+  S.biz.hst_num = $('cfg-hst').value.trim();
+  // Note: S.biz.tax_enabled is updated by the setTaxToggle function in Step 4
+
+  // 2. Save to LocalStorage for offline speed
+  try { localStorage.setItem('smhq_biz', JSON.stringify(S.biz)); } catch(e) {}
+
+  // 3. Send to Google Sheets CONFIG tab
   if(!S.isDemo){
-    // Include logo so it syncs across all devices via GAS/CONFIG
-    gasCall({action:'updateBizConfig',...S.biz});
+    gasCall({action:'updateBizConfig', ...S.biz});
   }
-  const pb=$('pr-h');if(pb)pb.textContent=`⏱ Hourly ($${S.biz.rate}/hr)`;
+
+  // 4. Clean up UI
   updateHeaderBrand();
-  try { localStorage.removeItem('smhq_cache'); } catch(e) {}
-  calc();
-  showToast('✓ Business info saved');
+  calc(); // Recalculate totals on booking screen
+  showToast('✓ Settings and Tax preference saved');
 }
 function hourlyRate(){return S.biz.rate||50;}
 function taxRate(){return parseFloat(S.biz.tax_rate)||0.13;}
@@ -1053,156 +1199,6 @@ function openBookJobForLead(cid){
 function startAddClient(){
   S.editCli=null;S.cliStatus='Lead';['ac-first','ac-last','ac-phone','ac-phone2','ac-email','ac-street','ac-city','ac-postal','ac-notes','ac-family','ac-access'].forEach(i=>$(i).value='');
   setCS('Lead');popLists();$('ac-savebook').style.display='';navTo('add-client',true);
-}
-
-function renderDash(){
-  renderEarnBars();
-  const tod=today();
-  // Only completed jobs count as owed — scheduled jobs haven't been done yet
-  const completedJobIds=new Set(S.jobs.filter(j=>j.Job_Status==='Completed').map(j=>j.Job_ID));
-  const pend=S.financials.filter(f=>f.Status==='Pending'&&completedJobIds.has(f.Job_ID));
-  const allPaid=S.financials.filter(f=>f.Status==='Paid');
-  const thisMonth=new Date().toISOString().slice(0,7);
-  const paid=S.moneyFilter==='month'?allPaid.filter(f=>(f.Paid_Date||'').startsWith(thisMonth)):allPaid;
-  $('mf-month')?.classList.toggle('on',S.moneyFilter==='month');
-  $('mf-all')?.classList.toggle('on',S.moneyFilter==='all');
-  $('m-owed').textContent='$'+pend.reduce((s,f)=>s+parseFloat(f.Amount||0),0).toFixed(2);
-  $('m-owed-s').textContent=pend.length+' unpaid';
-  $('m-paid').textContent='$'+paid.reduce((s,f)=>s+parseFloat(f.Amount||0),0).toFixed(2);
-  $('m-paid-s').textContent=paid.length+(S.moneyFilter==='month'?' paid this month':' paid total');
-
-  const now=new Date();
-  const todayJobs=S.jobs.filter(j=>j.Job_Status==='Scheduled'&&(j.Scheduled_Date)===tod)
-    .map(j=>{
-      let isPastDue=false;
-      if(j.Time && !j.Time.includes('1899')){
-        try{
-          const[h,m]=j.Time.split(':');
-          const start=new Date();start.setHours(parseInt(h),parseInt(m),0,0);
-          const hrs=parseFloat(j.Estimated_Hours||1);
-          const end=new Date(start.getTime()+hrs*3600000);
-          isPastDue=end<now;
-        }catch(e){}
-      }
-      return{...j,_pastDue:isPastDue};
-    })
-    .sort((a,b)=>{
-      if(a._pastDue&&!b._pastDue)return -1;
-      if(!a._pastDue&&b._pastDue)return 1;
-      return(a.Time||'').localeCompare(b.Time||'');
-    });
-  $('t-ct').textContent=todayJobs.length
-    ?todayJobs.length+' job'+(todayJobs.length!==1?'s':'')+' scheduled today'
-    :'No jobs today — enjoy your day! 🌸';
-  const upNextId=todayJobs.find(j=>!j._pastDue)?.Job_ID||null;
-  $('today-jobs-list').innerHTML=todayJobs.map(j=>{
-    const c=getCli(j.Client_ID);
-    const pd=j._pastDue;
-    const isUpNext=!pd&&j.Job_ID===upNextId;
-    return`<div class="today-job" data-action="open-job" data-jid="${esc(j.Job_ID)}" style="${pd?'border-left:3px solid var(--orange);background:rgba(192,88,0,.07);':isUpNext?'border-left:3px solid var(--pink);':''}">
-      <div class="tj-time" style="${pd?'color:var(--orange);':isUpNext?'color:var(--pink);font-weight:900;':''}">${j.Time&&!j.Time.includes('1899')?fmtT(j.Time):'All day'}</div>
-      <div class="tj-info">
-        <div class="tj-name">${esc(fullN(c))}${pd?` <span class="pill p-ora" style="font-size:9px;vertical-align:middle;">⚠️ Past Due</span>`:isUpNext?` <span class="pill p-pink" style="font-size:9px;vertical-align:middle;">⚡ Up Next</span>`:''}</div>
-        <div class="tj-svc">${esc(j.Service)}${j.Job_Notes?' · '+esc(j.Job_Notes).substring(0,28):''}</div>
-      </div>
-      <div style="display:flex;gap:6px;flex-shrink:0;">
-        <button class="btn b-sm b-p" data-action="complete" data-jid="${esc(j.Job_ID)}">✅ Done</button>
-      </div>
-    </div>`;
-  }).join('');
-
-  const in3=new Date();in3.setDate(in3.getDate()+3);
-  const in3s=in3.getFullYear()+'-'+String(in3.getMonth()+1).padStart(2,'0')+'-'+String(in3.getDate()).padStart(2,'0');
-  const allFuture=S.jobs.filter(j=>j.Job_Status==='Scheduled'&&(j.Scheduled_Date)>tod&&(j.Scheduled_Date)!=='')
-    .sort((a,b)=>(a.Scheduled_Date||'').localeCompare(b.Scheduled_Date||''));
-  const window3=allFuture.filter(j=>(j.Scheduled_Date)<=in3s);
-  const showJobs=S.showAllSched?allFuture:window3;
-  const hasMore=allFuture.length>window3.length;
-  const upSec=$('d-upcoming-sec');
-  if(!showJobs.length)upSec.style.display='none';
-  else{
-    upSec.style.display='';
-    $('d-upcoming').innerHTML=showJobs.map(j=>jrHTML(j,'sched')).join('');
-    const sm=$('d-show-more');
-    if(hasMore&&!S.showAllSched){sm.classList.remove('hidden');sm.textContent=`Show all ${allFuture.length} upcoming jobs →`;}
-    else sm.classList.add('hidden');
-  }
-
-  const owedIds=pend.map(f=>f.Job_ID);
-  // Only show COMPLETED jobs that haven't been paid — scheduled jobs aren't owed yet
-  const owedJobs=S.jobs.filter(j=>owedIds.includes(j.Job_ID)&&j.Job_Status==='Completed'&&!isArchived(j));
-  dsec('d-owed','d-owed-sec',owedJobs,'owed');
-
-  const unschd=S.jobs.filter(j=>j.Job_Status==='Scheduled'&&(!j.Scheduled_Date||j.Scheduled_Date===''));
-  dsec('d-unschd','d-unschd-sec',unschd,'unschd');
-
-  const overdue=S.jobs.filter(j=>{
-    if(j.Job_Status!=='Scheduled')return false;
-    const d=j.Scheduled_Date;return d&&d<tod;
-  }).sort((a,b)=>(a.Scheduled_Date||'').localeCompare(b.Scheduled_Date||''));
-  if(!overdue.length)$('d-overdue-sec').style.display='none';
-  else{$('d-overdue-sec').style.display='';$('d-overdue').innerHTML=overdue.map(j=>jrHTML(j,'overdue')).join('');}
-
-  dsec('d-fu','d-fu-sec',S.jobs.filter(j=>j.Follow_Up==='Yes'&&j.Job_Status!=='Cancelled'),'fu');
-  dsec('d-rev','d-rev-sec',S.jobs.filter(j=>j.Review_Status==='Pending'&&j.Job_Status==='Completed'),'review');
-
-  const archived=S.jobs.filter(isArchived)
-    .sort((a,b)=>(b.Completion_Date||b.Scheduled_Date||'').localeCompare(a.Completion_Date||a.Scheduled_Date||''));
-  const arcSec=$('d-arc-sec');
-  if(!archived.length)arcSec.style.display='none';
-  else{
-    arcSec.style.display='';
-    const shown=S.showAllArc?archived:archived.slice(0,3);
-    $('d-arc').innerHTML=shown.map(j=>{
-      const c=getCli(j.Client_ID);
-      const sd=j.Completion_Date||j.Scheduled_Date;
-      return`<div class="jr paid" style="opacity:.8;" data-action="open-job" data-jid="${esc(j.Job_ID)}">
-        <div class="ji">✅</div>
-        <div class="jd">
-          <div class="jn">${esc(fullN(c))}</div>
-          <div class="jm">${esc(j.Service)} · ${fmtD(j.Scheduled_Date||sd)}</div>
-          ${j.Completion_Date?`<div class="jm note">✅ Completed ${fmtD(j.Completion_Date)}</div>`:''}
-        </div>
-        <div class="jr-right">
-          <div style="display:flex;align-items:center;gap:4px;justify-content:flex-end;white-space:nowrap;"><span class="pill p-green">✅ Done</span><span class="ja" style="color:var(--green);">$${parseFloat(j.Total_Amount||0).toFixed(2)}</span></div>
-        </div>
-      </div>`;
-    }).join('');
-    const arcMore=$('d-arc-more');
-    if(arcMore){
-      if(archived.length>3&&!S.showAllArc){arcMore.classList.remove('hidden');arcMore.textContent=`Show all ${archived.length} completed →`;}
-      else arcMore.classList.add('hidden');
-    }
-  }
-
-  const leads=S.clients.filter(c=>c.Status==='Lead');
-  const ll=$('d-lead');const ls=$('d-lead-sec');
-  if(!leads.length)ls.style.display='none';
-  else{
-    ls.style.display='';
-    ll.innerHTML=leads.map(c=>`
-      <div class="jr lead">
-        <div class="ji">🟡</div>
-        <div class="jd" data-action="open-profile" data-cid="${esc(c.Client_ID)}" style="cursor:pointer;">
-          <div class="jn">${esc(fullN(c))}</div>
-          <div class="jm">${esc(c.Phone||c.Email||'No contact')} · ${esc(c.Referral_Source||'—')}</div>
-          ${c.Global_Notes?`<div class="jm note">💬 ${esc(c.Global_Notes).substring(0,50)}</div>`:''}
-        </div>
-        <div class="jr-right">
-          <div style="display:flex;align-items:center;gap:5px;justify-content:flex-end;"><span class="pill p-amb">Lead</span></div>
-          <button class="btn b-sm b-p" data-action="booklead" data-cid="${esc(c.Client_ID)}">📅 Book</button>
-        </div>
-      </div>`).join('');
-  }
-}
-
-function showAllSched(){S.showAllSched=true;renderDash();}
-function showAllArchived(){S.showAllArc=true;renderDash();}
-function setMoneyFilter(f){S.moneyFilter=f;renderDash();}
-function dsec(lid,sid,jobs,type){
-  const l=$(lid);const s=$(sid);
-  if(!jobs.length){s.style.display='none';return;}
-  s.style.display='';l.innerHTML=jobs.map(j=>jrHTML(j,type)).join('');
 }
 
 function jrHTML(j, type) {
@@ -2497,8 +2493,16 @@ function checkTimeConflict(){
 
 let _tt;
 function showToast(m){const t=$('toast');t.textContent=m;t.classList.add('show');clearTimeout(_tt);_tt=setTimeout(()=>t.classList.remove('show'),2800);}
-// --- GLOBAL SCOPE DELETE FUNCTIONS ---
 
+function setTaxToggle(val) {
+  // Updates the local state when Sandra clicks a button
+  S.biz.tax_enabled = val;
+  // Visual highlight for the buttons
+  $('tax-on').classList.toggle('on', val === 'TRUE');
+  $('tax-off').classList.toggle('on', val === 'FALSE');
+}
+
+// --- GLOBAL SCOPE DELETE FUNCTIONS ---
 function confirmDeleteClient() {
   const c = getCli(S.curCli);
   if (!c.Client_ID) return;
