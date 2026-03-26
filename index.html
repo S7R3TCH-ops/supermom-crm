@@ -2058,27 +2058,99 @@ async function forceAddClient(data){
   S.curCli=data.Client_ID;showToast('✓ '+data.First_Name+' '+data.Last_Name+' added!');
   navTo('clients');renderCli();
 }
-function confirmDeleteClient(){
-  const c=getCli(S.curCli);
-  $('m-del-body').innerHTML=`<div style="font-size:14px;color:var(--txt2);margin-bottom:16px;line-height:1.5;">Delete <strong>${esc(fullN(c))}</strong> and all their jobs and invoices? This cannot be undone.</div>
-    <button class="btn b-r mb8" onclick="deleteClient()">🗑️ Yes, Delete</button>
+// --- DELETE LOGIC (FRONTEND) ---
+
+function confirmDeleteClient() {
+  const c = getCli(S.curCli);
+  if (!c.Client_ID) return;
+  
+  $('m-del-body').innerHTML = `
+    <div style="font-size:14px;color:var(--txt2);margin-bottom:16px;line-height:1.5;">
+      Delete <strong>${esc(fullN(c))}</strong> and all their job history? 
+      <br><br>
+      <span style="color:var(--red); font-weight:800;">This cannot be undone.</span>
+    </div>
+    <button class="btn b-r mb8" onclick="deleteClient()">🗑️ Yes, Delete Client</button>
     <button class="btn b-s" onclick="closeMo('m-del')">Cancel</button>`;
   showMo('m-del');
 }
-async function deleteClient(){
-  closeMo('m-del');const cid=S.curCli;
-  // Remove from local state immediately
-  S.jobs.filter(j=>j.Client_ID===cid).forEach(j=>{S.financials=S.financials.filter(f=>f.Job_ID!==j.Job_ID);});
-  S.jobs=S.jobs.filter(j=>j.Client_ID!==cid);
-  S.clients=S.clients.filter(c=>c.Client_ID!==cid);
-  try{localStorage.removeItem('smhq_cache');}catch(e){}
-  // Navigate and render immediately — local state is authoritative
-  navTo('clients');renderCli();showToast('🗑️ Client deleted');
-  // Track as pending so ↺ refresh can't bring it back before GAS write completes
+
+async function deleteClient() {
+  const cid = S.curCli;
+  if (!cid) return;
+
+  // 1. Close modals immediately
+  closeMo('m-del');
+  
+  // 2. Optimistic UI: Remove from local state immediately
   _pendingDeletes.clients.add(cid);
-  if(!S.isDemo) gasCall({action:'deleteClient',clientId:cid}).then(()=>{
-    _pendingDeletes.clients.delete(cid);
-  });
+  S.clients = S.clients.filter(c => c.Client_ID !== cid);
+  
+  // Also remove their jobs and financials from local view
+  const clientJobs = S.jobs.filter(j => j.Client_ID === cid);
+  clientJobs.forEach(j => _pendingDeletes.jobs.add(j.Job_ID));
+  S.jobs = S.jobs.filter(j => j.Client_ID !== cid);
+  S.financials = S.financials.filter(f => f.Client_ID !== cid);
+
+  // 3. Update UI
+  showToast('🗑️ Deleting client...');
+  navTo('clients'); 
+  renderCli();
+
+  // 4. Send to Backend
+  if (!S.isDemo) {
+    const r = await gasCall({ action: 'deleteClient', clientId: cid });
+    if (r.success) {
+      // Confirmed on server, can keep in pendingDeletes or rely on fresh load later
+      try { localStorage.removeItem('smhq_cache'); } catch(e) {}
+    }
+  }
+}
+
+function confirmDeleteJob() {
+  const jid = S.jobModal;
+  const j = getJob(jid);
+  if (!j.Job_ID) return;
+
+  $('m-del-body').innerHTML = `
+    <div style="font-size:14px;color:var(--txt2);margin-bottom:16px;line-height:1.5;">
+      Delete this <strong>${esc(j.Service)}</strong> job?
+      <br><br>
+      <span style="color:var(--red); font-weight:800;">This will remove the job and any payment records associated with it.</span>
+    </div>
+    <button class="btn b-r mb8" onclick="deleteJob()">🗑️ Yes, Delete Job</button>
+    <button class="btn b-s" onclick="closeMo('m-del')">Cancel</button>`;
+  showMo('m-del');
+}
+
+async function deleteJob() {
+  const jid = S.jobModal;
+  if (!jid) return;
+
+  const j = getJob(jid);
+  const cid = j.Client_ID;
+
+  // 1. Close modals
+  closeMo('m-del');
+  closeMo('m-job');
+
+  // 2. Optimistic UI: Remove from local state
+  _pendingDeletes.jobs.add(jid);
+  S.jobs = S.jobs.filter(x => x.Job_ID !== jid);
+  S.financials = S.financials.filter(x => x.Job_ID !== jid);
+
+  // 3. Update UI
+  showToast('🗑️ Deleting job...');
+  if (S.view === 'dashboard') renderDash();
+  else if (S.view === 'profile') renderProfileJobs();
+
+  // 4. Send to Backend
+  if (!S.isDemo) {
+    const r = await gasCall({ action: 'deleteJob', jobId: jid });
+    if (r.success) {
+      try { localStorage.removeItem('smhq_cache'); } catch(e) {}
+    }
+  }
 }
 
 function openEditNotes(){
