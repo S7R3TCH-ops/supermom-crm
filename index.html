@@ -49,6 +49,7 @@ body.modal-open{overflow:hidden;}
   font-weight:800;color:var(--amber);text-align:center;flex-shrink:0;}
 .hidden{display:none!important;}
 
+  
 /* HEADER */
 /* ── HEADER ─────────────────────────────────────────────────────── */
 #header{
@@ -377,6 +378,7 @@ body.modal-open #scroll{overflow:hidden;}
 .logo-thumb-empty{width:52px;height:52px;border-radius:10px;
   border:2px dashed var(--border);background:var(--bg);flex-shrink:0;
   display:flex;align-items:center;justify-content:center;font-size:22px;color:var(--txt3);}
+.hide-admin { display: none !important; } 
 </style>
 </head>
 <body>
@@ -581,14 +583,15 @@ body.modal-open #scroll{overflow:hidden;}
     <div class="fg"><label class="fl">Owner / Operator</label><input class="fi" id="cfg-owner" type="text" placeholder="Sandra"></div>
     <div class="fg"><label class="fl">Hourly Rate ($)</label><input class="fi" id="cfg-rate" type="text" inputmode="decimal" pattern="[0-9\.]*" value="50"></div>
     <div class="fg"><label class="fl">HST Number (optional)</label><input class="fi" id="cfg-hst" type="text" placeholder="123456789 RT0001"></div>
-    <div class="fg">
+    
+    <div class="fg hide-admin">
       <label class="fl">Tax Collection</label>
       <div class="tr">
         <button class="tb" id="tax-on" onclick="setTaxToggle('TRUE')">Tax ON (13%)</button>
         <button class="tb" id="tax-off" onclick="setTaxToggle('FALSE')">Tax OFF (0%)</button>
       </div>
     </div>
-    <div class="fg">
+    <div class="fg hide-admin">
       <label class="fl">Business Logo</label>
       <div class="logo-upload-row" style="display:none;">
         <div id="logo-thumb-empty" class="logo-thumb-empty">🏠</div>
@@ -601,7 +604,7 @@ body.modal-open #scroll{overflow:hidden;}
       </div>
       <div class="fh">PNG or JPG, square crop works best. Max 200×200px recommended.</div>
     </div>
-    <button class="btn b-p" onclick="saveBizConfig()">💾 Save Business Info</button>
+  <button class="btn b-p" onclick="saveBizConfig()">💾 Save Business Info</button>
   </div>
   <div id="admin-lists"></div>
   <div class="card">
@@ -694,11 +697,7 @@ const DEFAULT_BIZ = {
 
 function taxRate() {
   // Defensive check: handle string or boolean from database
-  const enabled = String(S.biz.tax_enabled).toUpperCase();
-  if (enabled === 'TRUE') {
-    return parseFloat(S.biz.tax_rate) || 0.13;
-  }
-  return 0;
+return String(S.biz.tax_enabled).toUpperCase() === 'TRUE' ? 0.13 : 0;
 }
 
 let S={
@@ -831,36 +830,32 @@ function syncBizUI(){
 
 function renderDash(){
   renderEarnBars();
-  const tod = today();
-  // Get current month in YYYY-MM format
   const now = new Date();
   const thisMonth = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0');
 
-  // COLLECTED
-  const allPaidInvoices = S.financials.filter(f => f.Status === 'Paid');
-  const paidThisMonth = allPaidInvoices.filter(f => {
-    if (!f.Paid_Date) return false;
-    return String(f.Paid_Date).startsWith(thisMonth);
-  });
+  // COLLECTED Calculation
+  const allPaid = S.financials.filter(f => f.Status === 'Paid');
+  const paidThisMonth = allPaid.filter(f => String(f.Paid_Date).startsWith(thisMonth));
   
-  const displayPaid = S.moneyFilter === 'month' ? paidThisMonth : allPaidInvoices;
+  // Use S.moneyFilter to decide which array to sum
+  const displayPaid = S.moneyFilter === 'month' ? paidThisMonth : allPaid;
   const totalCollected = displayPaid.reduce((sum, f) => sum + parseFloat(f.Amount || 0), 0);
 
-  // OWED
+  // OWED Calculation (Completed but not Paid)
   const owedJobs = S.jobs.filter(j => j.Job_Status === 'Completed' && !isPaidJob(j));
   const totalOwed = owedJobs.reduce((sum, j) => sum + parseFloat(j.Total_Amount || 0), 0);
 
   $('m-owed').textContent = '$' + totalOwed.toFixed(2);
-  $('m-owed-s').textContent = owedJobs.length + ' unpaid job(s)';
+  $('m-owed-s').textContent = owedJobs.length + ' unpaid';
   $('m-paid').textContent = '$' + totalCollected.toFixed(2);
-  $('m-paid-s').textContent = displayPaid.length + (S.moneyFilter === 'month' ? ' paid this month' : ' paid total');
+  $('m-paid-s').textContent = displayPaid.length + (S.moneyFilter === 'month' ? ' this month' : ' total');
 
-  // Toggle button highlights
-  $('mf-month')?.classList.toggle('on', S.moneyFilter === 'month');
-  $('mf-all')?.classList.toggle('on', S.moneyFilter === 'all');
+  // Update button highlights
+  if($('mf-month')) $('mf-month').className = S.moneyFilter === 'month' ? 'tb on' : 'tb';
+  if($('mf-all')) $('mf-all').className = S.moneyFilter === 'all' ? 'tb on' : 'tb';
 
-  // --- 2. TODAY'S JOBS ---
-    const todayJobs = S.jobs.filter(j => j.Job_Status === 'Scheduled' && j.Scheduled_Date === tod)
+  const tod = today();
+  const todayJobs = S.jobs.filter(j => j.Job_Status === 'Scheduled' && j.Scheduled_Date === tod)
     .map(j => {
       let isPastDue = false;
       if(j.Time && !j.Time.includes('1899')){
@@ -880,7 +875,7 @@ function renderDash(){
       return (a.Time || '').localeCompare(b.Time || '');
     });
 
-  $('t-ct').textContent = todayJobs.length ? todayJobs.length + ' job(s) today' : 'No jobs today — enjoy your day! 🌸';
+  $('t-ct').textContent = todayJobs.length ? todayJobs.length + ' job(s) scheduled today' : 'No jobs today — enjoy your day! 🌸';
   
   const upNextId = todayJobs.find(j => !j._pastDue)?.Job_ID || null;
   $('today-jobs-list').innerHTML = todayJobs.map(j => {
