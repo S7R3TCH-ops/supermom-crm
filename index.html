@@ -796,35 +796,43 @@ function syncBizUI(){
   }
 }
 function updateHeaderBrand(){
-  //const logoEl=$('brand-logo');const nameEl=$('brand-name-txt');
+  const logoEl=$('brand-logo'); 
+  const nameEl=$('brand-name-txt');
   
-  if(!logoEl||!nameEl)return;
-  const bizName=S.biz.biz||'';
-  const isDefault=!bizName||bizName==='Supermom for Hire';
-  if(isDefault){nameEl.innerHTML='Supermom <span>for Hire</span>';} else {nameEl.textContent=bizName;}
-  if(S.biz.logo){
+  if(!logoEl || !nameEl) return;
+
+  const bizName = S.biz.biz || '';
+  const isDefault = !bizName || bizName === 'Supermom for Hire';
+
+  if(isDefault){
+    nameEl.innerHTML = 'Supermom <span>for Hire</span>';
+  } else {
+    nameEl.textContent = bizName;
+  }
+
+  // Determine source: Database logo first, then hardcoded fallback
+  const logoSource = S.biz.logo || GLOBAL_LOGO;
+
+  if(logoSource && logoSource !== ""){
     // Reset sizing before measuring
-    logoEl.style.maxHeight='';logoEl.style.maxWidth='';logoEl.style.width='';logoEl.style.height='';
-    logoEl.onload=function(){
-      // Smart sizing: wide/wordmark logos fill by width, square/icon logos fill by height
-      const aspect=this.naturalWidth/(this.naturalHeight||1);
-      if(aspect>=2){
-        // Landscape/wordmark — let it be wide, cap at header width
-        this.style.maxWidth='210px';this.style.maxHeight='54px';
-        this.style.width='auto';this.style.height='auto';
+    logoEl.style.maxHeight=''; logoEl.style.maxWidth=''; logoEl.style.width=''; logoEl.style.height='';
+    logoEl.onload = function(){
+      const aspect = this.naturalWidth / (this.naturalHeight || 1);
+      if(aspect >= 2){
+        this.style.maxWidth='210px'; this.style.maxHeight='54px';
+        this.style.width='auto'; this.style.height='auto';
       } else {
-        // Square or portrait icon — fill height
-        this.style.maxHeight='54px';this.style.maxWidth='210px';
-        this.style.height='54px';this.style.width='auto';
+        this.style.maxHeight='54px'; this.style.maxWidth='210px';
+        this.style.height='54px'; this.style.width='auto';
       }
     };
-    logoEl.src=S.biz.logo;
+    logoEl.src = logoSource;
     logoEl.classList.remove('hidden');
-    nameEl.style.display='none';
+    nameEl.style.display = 'none';
   } else {
     logoEl.classList.add('hidden');
-    logoEl.onload=null;
-    nameEl.style.display='';
+    logoEl.onload = null;
+    nameEl.style.display = '';
   }
 }
 function handleLogoUpload(input){
