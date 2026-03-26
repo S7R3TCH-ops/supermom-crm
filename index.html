@@ -796,8 +796,8 @@ function syncBizUI(){
   }
 }
 function updateHeaderBrand(){
-  const logoEl=$('brand-logo'); 
-  const nameEl=$('brand-name-txt');
+  const logoEl = document.getElementById('brand-logo'); 
+  const nameEl = document.getElementById('brand-name-txt');
   
   if(!logoEl || !nameEl) return;
 
@@ -810,11 +810,9 @@ function updateHeaderBrand(){
     nameEl.textContent = bizName;
   }
 
-  // Determine source: Database logo first, then hardcoded fallback
   const logoSource = S.biz.logo || GLOBAL_LOGO;
 
   if(logoSource && logoSource !== ""){
-    // Reset sizing before measuring
     logoEl.style.maxHeight=''; logoEl.style.maxWidth=''; logoEl.style.width=''; logoEl.style.height='';
     logoEl.onload = function(){
       const aspect = this.naturalWidth / (this.naturalHeight || 1);
@@ -2499,6 +2497,63 @@ function checkTimeConflict(){
 
 let _tt;
 function showToast(m){const t=$('toast');t.textContent=m;t.classList.add('show');clearTimeout(_tt);_tt=setTimeout(()=>t.classList.remove('show'),2800);}
+// --- GLOBAL SCOPE DELETE FUNCTIONS ---
+
+function confirmDeleteClient() {
+  const c = getCli(S.curCli);
+  if (!c.Client_ID) return;
+  $('m-del-body').innerHTML = `
+    <div style="font-size:14px;color:var(--txt2);margin-bottom:16px;line-height:1.5;">
+      Delete <strong>${esc(fullN(c))}</strong> and all history? 
+      <br><br><span style="color:var(--red); font-weight:800;">This cannot be undone.</span>
+    </div>
+    <button class="btn b-r mb8" onclick="deleteClient()">🗑️ Yes, Delete Client</button>
+    <button class="btn b-s" onclick="closeMo('m-del')">Cancel</button>`;
+  showMo('m-del');
+}
+
+async function deleteClient() {
+  const cid = S.curCli;
+  if (!cid) return;
+  closeMo('m-del');
+  _pendingDeletes.clients.add(cid);
+  S.clients = S.clients.filter(c => c.Client_ID !== cid);
+  S.jobs.filter(j => j.Client_ID === cid).forEach(j => _pendingDeletes.jobs.add(j.Job_ID));
+  S.jobs = S.jobs.filter(j => j.Client_ID !== cid);
+  S.financials = S.financials.filter(f => f.Client_ID !== cid);
+  showToast('🗑️ Deleting client...');
+  navTo('clients'); 
+  renderCli();
+  if (!S.isDemo) await gasCall({ action: 'deleteClient', clientId: cid });
+}
+
+function confirmDeleteJob() {
+  const jid = S.jobModal;
+  const j = getJob(jid);
+  if (!j.Job_ID) return;
+  $('m-del-body').innerHTML = `
+    <div style="font-size:14px;color:var(--txt2);margin-bottom:16px;line-height:1.5;">
+      Delete this <strong>${esc(j.Service)}</strong> job?
+      <br><br><span style="color:var(--red); font-weight:800;">This will remove the job and payment records.</span>
+    </div>
+    <button class="btn b-r mb8" onclick="deleteJob()">🗑️ Yes, Delete Job</button>
+    <button class="btn b-s" onclick="closeMo('m-del')">Cancel</button>`;
+  showMo('m-del');
+}
+
+async function deleteJob() {
+  const jid = S.jobModal;
+  if (!jid) return;
+  closeMo('m-del');
+  closeMo('m-job');
+  _pendingDeletes.jobs.add(jid);
+  S.jobs = S.jobs.filter(x => x.Job_ID !== jid);
+  S.financials = S.financials.filter(x => x.Job_ID !== jid);
+  showToast('🗑️ Deleting job...');
+  if (S.view === 'dashboard') renderDash();
+  else if (S.view === 'profile') renderProfileJobs();
+  if (!S.isDemo) await gasCall({ action: 'deleteJob', jobId: jid });
+}
 </script>
 </body>
 </html>
