@@ -671,7 +671,7 @@ body.modal-open #scroll{overflow:hidden;}
 
 <script>
 const APP_VERSION='3.7';
-const GAS_URL='https://script.google.com/macros/s/AKfycbyT52xA2ErXEA3nizibGn9Qg6FTOPdQv8ZdGuKxUlDx_4h4tTpWiGv6eP0inIL-hvdu2Q/exec';
+const GAS_URL='https://script.google.com/macros/s/AKfycbyu0zC9BOWWHQz7V82wEcFbeS_3M5vc1i3GeHp6XF-wmjYBhSkBZX8W8mjkoxbBSNSdFA/exec';
 const DL={
   services:['Deep Clean','Regular Clean','Move In / Move Out','Post-Renovation','Organization',
     'Laundry & Folding','Fridge & Oven Clean','Window Washing','Senior Companionship',
@@ -976,7 +976,23 @@ function updateHeaderBrand(){
         this.style.height='54px'; this.style.width='auto';
       }
     };
-    logoEl.src = logoSource;
+    // Convert base64 to Blob URL to avoid ERR_INVALID_URL on large data URIs
+    try {
+      const arr = logoSource.split(',');
+      const mime = arr[0].match(/:(.*?);/)[1];
+      const bstr = atob(arr[1]);
+      let n = bstr.length;
+      const u8arr = new Uint8Array(n);
+      while(n--){ u8arr[n] = bstr.charCodeAt(n); }
+      const blob = new Blob([u8arr], {type: mime});
+      const blobUrl = URL.createObjectURL(blob);
+      const prevUrl = logoEl._blobUrl;
+      logoEl._blobUrl = blobUrl;
+      logoEl.src = blobUrl;
+      if(prevUrl) URL.revokeObjectURL(prevUrl);
+    } catch(e) {
+      logoEl.src = logoSource;
+    }
     logoEl.classList.remove('hidden');
     nameEl.style.display = 'none';
   } else {
