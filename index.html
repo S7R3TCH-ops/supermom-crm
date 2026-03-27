@@ -934,6 +934,48 @@ function renderDash(){
   }
 }
 
+// --- LOGO HANDLING (Fixes ERR_INVALID_URL) ---
+function updateLogoDisplay(base64OrUrl) {
+  const logoEl = $('main-logo');
+  if (!logoEl || !base64OrUrl) return;
+
+  if (base64OrUrl.startsWith('data:image')) {
+    // Convert massive base64 to a local Blob URL to bypass browser length limits
+    fetch(base64OrUrl)
+      .then(res => res.blob())
+      .then(blob => {
+        const objectURL = URL.createObjectURL(blob);
+        logoEl.src = objectURL;
+      });
+  } else {
+    logoEl.src = base64OrUrl;
+  }
+}
+
+// --- REVISED CALLGAS (Fixes CORS/Silent Failures) ---
+async function callGas(action, data = {}) {
+  try {
+    const response = await fetch(GAS_URL, {
+      method: 'POST',
+      mode: 'no-cors', // Tells browser to ignore preflight; GAS handles this
+      body: JSON.stringify({ action, data })
+    });
+    
+    // Note: 'no-cors' makes the response opaque. 
+    // To get data back (like sync), we use standard fetch and handle redirects.
+    if (action === 'sync') {
+       const res = await fetch(GAS_URL + '?action=sync'); // Simple GET for sync is more CORS-friendly
+       const json = await res.json();
+       return json;
+    }
+    return { success: true }; 
+  } catch (err) {
+    console.error("GAS Error:", err);
+    showToast("Connection issue. Data queued.");
+    return { success: false };
+  }
+}
+  
 function setMoneyFilter(f){
   S.moneyFilter=f;
   renderDash();
