@@ -553,7 +553,7 @@ body.modal-open #scroll{overflow:hidden;}
       </div>
       <div class="fh" id="svc-price-hint" style="display:none;color:var(--green);font-weight:800;"></div>
     </div>
-    <div id="bj-hrs-g" class="fg"><label class="fl">Estimated Hours</label><input class="fi" id="bj-hrs" type="text" inputmode="decimal" pattern="[0-9\.]*" value="2" oninput="calc()"></div>
+    <div id="bj-hrs-g" class="fg"><label class="fl">Estimated Hours</label><input class="fi" id="bj-hrs" type="text" inputmode="decimal" pattern="[0-9\.]*" placeholder="e.g. 2" oninput="calc()"></div>
     <div id="bj-flat-g" class="fg hidden">
       <label class="fl">Flat Rate Amount (before HST) *</label>
       <input class="fi" id="bj-flat" type="text" inputmode="decimal" pattern="[0-9\.]*" placeholder="e.g. 200" oninput="calc()">
@@ -770,9 +770,12 @@ window.addEventListener('DOMContentLoaded',()=>{
   const d=new Date();
   $('t-dayname').textContent=d.toLocaleDateString('en-CA',{weekday:'long'});
   $('t-date').textContent=d.toLocaleDateString('en-CA',{month:'long',day:'numeric',year:'numeric'});
+  document.addEventListener('focus',e=>{
+    if(e.target.matches('input.fi')){e.target.select();}
+  },true);
   loadBizConfig();
-  updHeader('dashboard'); // sets up refresh button immediately
-  renderDash();           // renders empty-state dashboard right away (no Loading…)
+  updHeader('dashboard');
+  renderDash();
   loadAllData();calc();
 });
 
@@ -931,6 +934,19 @@ function renderDash(){
   }
 }
 
+function setMoneyFilter(f){
+  S.moneyFilter=f;
+  renderDash();
+}
+function showAllSched(){
+  S.showAllSched=true;
+  renderDash();
+}
+function showAllArchived(){
+  S.showAllArc=true;
+  renderDash();
+}
+
 function updateHeaderBrand(){
   const logoEl = document.getElementById('brand-logo'); 
   const nameEl = document.getElementById('brand-name-txt');
@@ -1019,7 +1035,6 @@ function saveBizConfig() {
   calc(); 
 }
 function hourlyRate(){return S.biz.rate||50;}
-function taxRate(){return parseFloat(S.biz.tax_rate)||0.13;}
 
 let _reqs=0;
 function showLoader(){if(_reqs++===0)$('global-loader').classList.add('show');}
@@ -1184,8 +1199,9 @@ function setHT(t){
 }
 function updNav(v){document.querySelectorAll('.ni').forEach(n=>n.classList.toggle('active',n.dataset.v===v));}
 function navBookJob(){S.stack=[];popCliDrop();popLists();navTo('book-job');requestAnimationFrame(()=>resetBookForm());}
-function resetBookForm(){['bj-cli','bj-svc','bj-date','bj-time','bj-notes','bj-flat'].forEach(id=>{const el=$(id);if(el)el.value='';});
-  if($('bj-hrs'))$('bj-hrs').value='2';if($('bj-sur'))$('bj-sur').value='';
+function resetBookForm(){
+  ['bj-cli','bj-svc','bj-date','bj-time','bj-notes','bj-flat','bj-sur','bj-hrs'].forEach(id=>{const el=$(id);if(el)el.value='';});
+  if($('bj-nb'))$('bj-nb').classList.add('hidden');
   setSched('hard');setPrice('Hourly');calc();
 }
 function openBookJobForClient(){
@@ -1785,12 +1801,12 @@ function openJobModal(jid){
       <div class="fg"><label class="fl">Follow-Up</label>
         <div class="tr"><button class="tb ${j.Follow_Up!=='Yes'?'on':''}" id="jfu-n" onclick="jFU('No')">No</button><button class="tb ${j.Follow_Up==='Yes'?'on':''}" id="jfu-y" onclick="jFU('Yes')">🔔 Yes</button></div></div>
       <div class="fg"><label class="fl">➕ Known Additional Costs ($)</label>
-        <input class="fi" id="je-addcost" type="text" inputmode="decimal" pattern="[0-9\.]*" value="${esc(j.Additional_Cost||'')}" placeholder="e.g. 25.00" oninput="jeCalc()"></div>
+        <input class="fi" id="je-addcost" type="text" inputmode="decimal" pattern="[0-9\.]*" value="${parseFloat(j.Additional_Cost||0)>0?esc(j.Additional_Cost):''}" placeholder="e.g. 25.00" oninput="jeCalc()"></div>
       <div class="fg"><label class="fl">Additional Cost Description</label>
         <input class="fi" id="je-addcost-notes" type="text" value="${esc(j.Additional_Cost_Notes||'')}" placeholder="e.g. Parking fee"></div>
       <div style="background:var(--bg);border-radius:10px;padding:12px 14px;margin-bottom:14px;font-size:13px;">
         <div style="color:var(--txt3);font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;">Payment Status</div>
-        ${isPrePaid?`<div style="color:var(--purple);font-weight:800;">💜 Pre-payment recorded · $${parseFloat(j.PrePaid_Amount||j.Total_Amount||0).toFixed(2)} via ${esc(j.Payment_Method||'—')}${j.PrePaid_Reason?' · '+esc(j.PrePaid_Reason):''}</div>${j.Payment_Status==='Partial'?'<div style="color:var(--red);font-weight:800;margin-top:4px;">💸 $'+(parseFloat(j.Total_Amount||0)-parseFloat(j.PrePaid_Amount||0)).toFixed(2)+' remaining at completion</div>':''}`:`<div style="color:var(--txt2);">⏳ Unpaid — $${parseFloat(j.Total_Amount||0).toFixed(2)} quoted</div>`}
+        ${isPrePaid?`<div style="color:var(--purple);font-weight:800;">💜 Pre-payment recorded · $${parseFloat(j.PrePaid_Amount||j.Total_Amount||0).toFixed(2)} via ${esc(j.Payment_Method||'—')}${j.PrePaid_Reason?' · '+esc(j.PrePaid_Reason):''}</div>${j.Payment_Status==='Partial'?'<div style="color:var(--txt3);font-size:12px;margin-top:4px;">Balance owing will update when you save with the new total above.</div>':''}`:`<div style="color:var(--txt2);">⏳ Unpaid — see total above</div>`}
       </div>
       <button class="btn b-p mb8" onclick="submitJobEdit(this, false)">💾 Save Changes</button>
       ${!isPrePaid?`<button class="btn b-s mb8" onclick="closeMo('m-job');openPaidModal('${esc(j.Job_ID)}')">💜 Record Pre-Payment</button>`:''}
@@ -1951,28 +1967,7 @@ if (!S.isDemo) {
     if (btn) { btn.disabled = false; btn.textContent = origText; }
   }
 }
-async function deleteJob(){
-  const jid = S.jobModal;
-  if(!jid) return;
 
-  // 1. Immediate UI/Logic shield
-  _pendingDeletes.jobs.add(jid);
-  closeMo('m-del');
-  closeMo('m-job');
-  
-  // 2. Local State Wipe
-  S.jobs = S.jobs.filter(x => x.Job_ID !== jid);
-  S.financials = S.financials.filter(x => x.Job_ID !== jid);
-  try { localStorage.removeItem('smhq_cache'); } catch(e) {}
-  
-  refreshData();
-  showToast('🗑️ Deleting...');
-
-  // 3. Background Sync
-  if(!S.isDemo) {
-    await gasCall({action:'deleteJob', jobId:jid});
-  }
-}
 
 async function markRevRequested(jid){
   const j=S.jobs.find(x=>x.Job_ID===jid);if(j)j.Review_Status='Requested';
@@ -2458,7 +2453,7 @@ function bookAgain(jid){
   const svcEl=$('bj-svc');if(svcEl)svcEl.value=j.Service||'';
   onSvcChange();
   if(j.Pricing_Type==='Flat'){setPrice('Flat');if($('bj-flat'))$('bj-flat').value=j.Flat_Rate||'';}
-  else{setPrice('Hourly');if($('bj-hrs'))$('bj-hrs').value=j.Estimated_Hours||'2';}
+  else{setPrice('Hourly');if($('bj-hrs'))$('bj-hrs').value=j.Estimated_Hours||'';}
   if($('bj-sur'))$('bj-sur').value=parseFloat(j.Surcharge||0)>0?j.Surcharge:'';
   if($('bj-notes'))$('bj-notes').value=j.Job_Notes||'';
   if($('bj-sur'))$('bj-sur').value = parseFloat(j.Surcharge || 0) > 0 ? j.Surcharge : '';
@@ -2524,63 +2519,6 @@ function setTaxToggle(val) {
   $('tax-off').classList.toggle('on', val === 'FALSE');
 }
 
-// --- GLOBAL SCOPE DELETE FUNCTIONS ---
-function confirmDeleteClient() {
-  const c = getCli(S.curCli);
-  if (!c.Client_ID) return;
-  $('m-del-body').innerHTML = `
-    <div style="font-size:14px;color:var(--txt2);margin-bottom:16px;line-height:1.5;">
-      Delete <strong>${esc(fullN(c))}</strong> and all history? 
-      <br><br><span style="color:var(--red); font-weight:800;">This cannot be undone.</span>
-    </div>
-    <button class="btn b-r mb8" onclick="deleteClient()">🗑️ Yes, Delete Client</button>
-    <button class="btn b-s" onclick="closeMo('m-del')">Cancel</button>`;
-  showMo('m-del');
-}
-
-async function deleteClient() {
-  const cid = S.curCli;
-  if (!cid) return;
-  closeMo('m-del');
-  _pendingDeletes.clients.add(cid);
-  S.clients = S.clients.filter(c => c.Client_ID !== cid);
-  S.jobs.filter(j => j.Client_ID === cid).forEach(j => _pendingDeletes.jobs.add(j.Job_ID));
-  S.jobs = S.jobs.filter(j => j.Client_ID !== cid);
-  S.financials = S.financials.filter(f => f.Client_ID !== cid);
-  showToast('🗑️ Deleting client...');
-  navTo('clients'); 
-  renderCli();
-  if (!S.isDemo) await gasCall({ action: 'deleteClient', clientId: cid });
-}
-
-function confirmDeleteJob() {
-  const jid = S.jobModal;
-  const j = getJob(jid);
-  if (!j.Job_ID) return;
-  $('m-del-body').innerHTML = `
-    <div style="font-size:14px;color:var(--txt2);margin-bottom:16px;line-height:1.5;">
-      Delete this <strong>${esc(j.Service)}</strong> job?
-      <br><br><span style="color:var(--red); font-weight:800;">This will remove the job and payment records.</span>
-    </div>
-    <button class="btn b-r mb8" onclick="deleteJob()">🗑️ Yes, Delete Job</button>
-    <button class="btn b-s" onclick="closeMo('m-del')">Cancel</button>`;
-  showMo('m-del');
-}
-
-async function deleteJob() {
-  const jid = S.jobModal;
-  if (!jid) return;
-  closeMo('m-del');
-  closeMo('m-job');
-  _pendingDeletes.jobs.add(jid);
-  S.jobs = S.jobs.filter(x => x.Job_ID !== jid);
-  S.financials = S.financials.filter(x => x.Job_ID !== jid);
-  showToast('🗑️ Deleting job...');
-  if (S.view === 'dashboard') renderDash();
-  else if (S.view === 'profile') renderProfileJobs();
-  if (!S.isDemo) await gasCall({ action: 'deleteJob', jobId: jid });
-}
-
 // --- DASHBOARD HELPERS ---
 /**
  * dsec: Dashboard Section drawer
@@ -2600,47 +2538,7 @@ function dsec(lid, sid, jobs, type) {
   l.innerHTML = jobs.map(j => jrHTML(j, type)).join('');
 }
 
-/**
- * jrHTML: Job Row HTML Generator
- * Standardizes how a job looks across all dashboard sections
- */
-function jrHTML(j, type) {
-  const c = getCli(j.Client_ID);
-  const amt = parseFloat(j.Total_Amount || 0);
-  const sd = j.Scheduled_Date;
-  const isASAP = j.Scheduling_Type === 'ASAP' && !sd;
-  const dStr = isASAP ? '⚡ ASAP' : fmtD(sd);
-  const icons = { owed: '🔴', sched: '🔵', fu: '🔔', review: '⭐', overdue: '🟠', unschd: '🗓️', paid: '✅' };
 
-  // Use Actual Duration if completed, otherwise Estimated
-  const hDisplay = j.Job_Status === 'Completed' ? (j.Actual_Duration || j.Estimated_Hours) : j.Estimated_Hours;
-
-  let btnHtml = '';
-  if (type === 'sched' || type === 'overdue' || type === 'unschd') {
-    btnHtml = isASAP ? 
-      `<button class="btn b-sm b-amb" data-action="schedule" data-jid="${esc(j.Job_ID)}">📅 Set Date</button>` :
-      `<button class="btn b-sm b-bl" data-action="complete" data-jid="${esc(j.Job_ID)}">✅ Done</button>`;
-  } else if (type === 'owed') {
-    btnHtml = `<button class="btn b-sm b-g" data-action="paid" data-jid="${esc(j.Job_ID)}">💰 Paid</button>`;
-  } else if (type === 'fu') {
-    btnHtml = `<button class="btn b-sm b-s" data-action="clearfu" data-jid="${esc(j.Job_ID)}">✓ Clear</button>`;
-  } else if (type === 'review') {
-    btnHtml = `<button class="btn b-sm b-pur" data-action="revreq" data-jid="${esc(j.Job_ID)}">⭐ Sent</button>`;
-  }
-
-  return `<div class="jr ${type}" data-action="open-job" data-jid="${esc(j.Job_ID)}">
-    <div class="ji">${icons[type] || '📋'}</div>
-    <div class="jd">
-      <div class="jn">${esc(fullN(c))}</div>
-      <div class="jm">${esc(j.Service)} · ${dStr} · ${hDisplay || '?'} hrs</div>
-      ${j.Job_Notes ? `<div class="jm note">📝 ${esc(j.Job_Notes).substring(0, 40)}...</div>` : ''}
-    </div>
-    <div class="jr-right">
-      <div class="ja">$${amt.toFixed(2)}</div>
-      ${btnHtml}
-    </div>
-  </div>`;
-}
 
 </script>
 </body>
