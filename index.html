@@ -825,7 +825,7 @@ async function gasCall(payload, isRetry = false) {
           console.error("GAS Connection Error:", err);
           resolve(handleOffline());
         })
-        .doPost({ parameter: { payload: JSON.stringify(payload) } }); 
+        .bridge(payload); // <-- Using the new bridge function instead of doPost
     });
   } 
   
@@ -926,7 +926,7 @@ function refreshData() {
 
 window.addEventListener('DOMContentLoaded', () => {
   const p = new URLSearchParams(location.search);
-  S.isDemo = p.get('demo') === '1' || GAS_URL === 'https://script.google.com/macros/s/AKfycbyu0zC9BOWWHQz7V82wEcFbeS_3M5vc1i3GeHp6XF-wmjYBhSkBZX8W8mjkoxbBSNSdFA/exec';
+  S.isDemo = p.get('demo') === '1'; // Now strictly relies on the URL parameter
   $('ver-txt').textContent = APP_VERSION;
   if(S.isDemo) $('demo-bar').classList.remove('hidden');
   
