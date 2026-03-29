@@ -3,22 +3,35 @@
 async function gasCall(payload, isRetry = false) {
   showLoader();
   try {
-    const response = await fetch(GAS_URL, {
+    let url = GAS_URL;
+    let options = {
       method: 'POST',
+      // We use 'text/plain' to keep it a "Simple Request" and bypass CORS preflight
       headers: { 'Content-Type': 'text/plain;charset=utf-8' },
       body: JSON.stringify(payload)
-    });
+    };
+
+    // If we are just getting data, use GET (it's more reliable for initial loads)
+    if (payload.action === 'getAllData') {
+      url += '?payload=' + encodeURIComponent(JSON.stringify(payload));
+      options = { method: 'GET' };
+    }
+
+    const response = await fetch(url, options);
     const json = await response.json();
+    
     hideLoader();
     return json;
   } catch (e) {
     hideLoader();
     console.error('GAS Connection Error:', e);
-    // Silent fail/queue for offline
+    // If it's a save action, we don't want the user to get stuck
+    if (!isRetry && payload.action !== 'getAllData') {
+      showToast('📴 Saved locally (Will sync later)');
+    }
     return { success: false, offline: true };
   }
 }
-
 // 2. THE BRAIN: The single source of truth for ALL money
 function getJobTotals(j) {
   const rate = parseFloat(S.biz.rate) || 50;
