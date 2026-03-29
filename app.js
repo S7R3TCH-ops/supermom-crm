@@ -1,7 +1,7 @@
 // ============================================================================
 // 1. CONSTANTS, GLOBALS & STATE
 // ============================================================================
-const APP_VERSION = '3.91';
+const APP_VERSION = '3.95'; //AI studios improvement attempt Mar 29 w backend code v4.95 - Joel
 
 // The URL used when testing outside of Google Apps Script (e.g. GitHub)
 const GAS_URL = "https://script.google.com/macros/s/AKfycbzoqPyDDmpdgNp60xAKrXtClxqOdWxmmwgnH4sK7fM-rcM8LyPoE9Br7Lg6CtI3hCREzw/exec";
@@ -147,29 +147,41 @@ function hideLoader() { if(--_reqs <= 0) { _reqs = 0; $('global-loader').classLi
 async function gasCall(payload, isRetry = false) {
   showLoader();
   try {
-    // GET with payload as URL param — works from GAS iframe and GitHub Pages (no CORS preflight)
-    const url = GAS_URL + '?payload=' + encodeURIComponent(JSON.stringify(payload));
-    const r = await fetch(url, { method: 'GET', redirect: 'follow' });
-    const json = await r.json();
+    // We switch to POST to avoid URL length limits
+    const r = await fetch(GAS_URL, { 
+      method: 'POST', 
+      body: JSON.stringify(payload),
+      mode: 'no-cors' // Use this if you get CORS errors, but 'cors' is better if GAS allows
+    });
+
+    // NOTE: GAS Web Apps redirected to a different URL on POST. 
+    // Because we need the JSON response, we actually use a trick: 
+    // We still use the POST logic but we have to handle the return differently 
+    // if we are outside the GAS environment.
+    
+    // BETTER VERSION FOR GITHUB -> GAS:
+    const response = await fetch(GAS_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify(payload)
+    });
+    
+    const json = await response.json();
     hideLoader();
     if (!json.success) console.error('GAS Error:', json.error);
     return json;
   } catch (e) {
     hideLoader();
     console.error('GAS Connection Error:', e);
-    // Queue write actions for later sync when offline
     if (!isRetry && payload.action !== 'getAllData') {
-      try {
-        const q = JSON.parse(localStorage.getItem('smhq_queue') || '[]');
-        q.push({ payload, timestamp: Date.now() });
-        localStorage.setItem('smhq_queue', JSON.stringify(q));
-        showToast('📴 Offline. Change queued for sync.');
-      } catch(_) {}
+      const q = JSON.parse(localStorage.getItem('smhq_queue') || '[]');
+      q.push({ payload, timestamp: Date.now() });
+      localStorage.setItem('smhq_queue', JSON.stringify(q));
+      showToast('📴 Offline. Change queued.');
     }
     return { success: false, offline: true };
   }
 }
-
 
 async function loadAllData() {
   if(S.isDemo){ loadDemo(); return; }
