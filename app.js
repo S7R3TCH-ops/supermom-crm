@@ -144,44 +144,8 @@ function dsec(lid, sid, jobs, type) {
 function showLoader() { if(_reqs++ === 0) $('global-loader').classList.add('show'); }
 function hideLoader() { if(--_reqs <= 0) { _reqs = 0; $('global-loader').classList.remove('show'); } }
 
-async function gasCall(payload, isRetry = false) {
-  showLoader();
-  try {
-    // We switch to POST to avoid URL length limits
-    const r = await fetch(GAS_URL, { 
-      method: 'POST', 
-      body: JSON.stringify(payload),
-      mode: 'no-cors' // Use this if you get CORS errors, but 'cors' is better if GAS allows
-    });
 
-    // NOTE: GAS Web Apps redirected to a different URL on POST. 
-    // Because we need the JSON response, we actually use a trick: 
-    // We still use the POST logic but we have to handle the return differently 
-    // if we are outside the GAS environment.
-    
-    // BETTER VERSION FOR GITHUB -> GAS:
-    const response = await fetch(GAS_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-      body: JSON.stringify(payload)
-    });
-    
-    const json = await response.json();
-    hideLoader();
-    if (!json.success) console.error('GAS Error:', json.error);
-    return json;
-  } catch (e) {
-    hideLoader();
-    console.error('GAS Connection Error:', e);
-    if (!isRetry && payload.action !== 'getAllData') {
-      const q = JSON.parse(localStorage.getItem('smhq_queue') || '[]');
-      q.push({ payload, timestamp: Date.now() });
-      localStorage.setItem('smhq_queue', JSON.stringify(q));
-      showToast('📴 Offline. Change queued.');
-    }
-    return { success: false, offline: true };
-  }
-}
+
 
 async function loadAllData() {
   if(S.isDemo){ loadDemo(); return; }
@@ -824,6 +788,31 @@ async function submitClient(thenBook=false) {
   }
   _isSaving=false;
   if(btn){btn.disabled=false;btn.textContent=origText;}
+
+  // 1. Create the local data immediately
+    data.Client_ID = 'C' + Date.now(); 
+    data.Created_Date = today();
+    
+    // 2. Update local memory and cache IMMEDIATELY (Optimistic UI)
+    S.clients.push(data);
+    localStorage.setItem('smhq_cache', JSON.stringify({clients:S.clients, jobs:S.jobs, financials:S.financials, lists:S.lists}));
+    
+    S.curCli = data.Client_ID;
+    showToast('✓ ' + first + ' added locally...');
+
+    // 3. Close the form and move the user along immediately
+    if (thenBook) { openBookJobForClient(); }
+    else { navTo('clients'); renderCli(); }
+
+    // 4. Send to Google in the background - don't make the user wait
+    if (!S.isDemo) {
+      gasCall({action: 'addClient', ...data}).then(r => {
+        if (r && r.Client_ID) {
+           // Swap temporary ID with real ID if necessary, but your local ID is fine to keep too
+           showToast('✅ Synced with Cloud');
+        }
+      });
+    }
 }
 
 function showDupWarning(existing, newData) {
