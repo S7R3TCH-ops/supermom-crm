@@ -17,7 +17,7 @@ const DL = {
 };
 
 // Placeholder for your giant base64 string. Paste it back in later!
-const GLOBAL_LOGO = "https://drive.google.com/uc?id=1vYV_0VFk2MF8QrZyQ77BKyx4hnpuDqSb";
+const GLOBAL_LOGO = "https://lh3.googleusercontent.com/d/1vYV_0VFk2MF8QrZyQ77BKyx4hnpuDqSb";
 
 const DEFAULT_BIZ = {
   biz: 'Supermom for Hire',
@@ -1790,16 +1790,16 @@ function syncBizUI() {
   if($('tax-on')) $('tax-on').classList.toggle('on', S.biz.tax_enabled === 'TRUE');
   if($('tax-off')) $('tax-off').classList.toggle('on', S.biz.tax_enabled === 'FALSE');
 
-  const hasLogo = !!(S.biz.logo);
-  const emptyEl = $('logo-thumb-empty'); 
-  const imgEl = $('logo-thumb-img'); 
+  const logoSrc = S.biz.logo && !S.biz.logo.startsWith('data:') ? S.biz.logo : GLOBAL_LOGO;
+  const emptyEl = $('logo-thumb-empty');
+  const imgEl = $('logo-thumb-img');
   const removeBtn = $('logo-remove-btn');
   if(emptyEl && imgEl){
-    if(hasLogo){
-      imgEl.src = S.biz.logo;
+    if(logoSrc){
+      imgEl.src = logoSrc;
       imgEl.classList.remove('hidden');
       emptyEl.style.display = 'none';
-      if(removeBtn) removeBtn.style.display = '';
+      if(removeBtn) removeBtn.style.display = 'none'; // no remove — logo is managed manually
     } else {
       imgEl.classList.add('hidden');
       emptyEl.style.display = '';
@@ -1825,7 +1825,7 @@ function updateHeaderBrand() {
 
   const logoSource = S.biz.logo || GLOBAL_LOGO;
 
-  if(logoSource && logoSource !== ""){
+  if(logoSource && logoSource !== "" && !logoSource.startsWith('data:')){
     logoEl.style.maxHeight=''; logoEl.style.maxWidth=''; logoEl.style.width=''; logoEl.style.height='';
     logoEl.onload = function(){
       const aspect = this.naturalWidth / (this.naturalHeight || 1);
@@ -1837,22 +1837,7 @@ function updateHeaderBrand() {
         this.style.height='54px'; this.style.width='auto';
       }
     };
-    try {
-      const arr = logoSource.split(',');
-      const mime = arr[0].match(/:(.*?);/)[1];
-      const bstr = atob(arr[1]);
-      let n = bstr.length;
-      const u8arr = new Uint8Array(n);
-      while(n--){ u8arr[n] = bstr.charCodeAt(n); }
-      const blob = new Blob([u8arr], {type: mime});
-      const blobUrl = URL.createObjectURL(blob);
-      const prevUrl = logoEl._blobUrl;
-      logoEl._blobUrl = blobUrl;
-      logoEl.src = blobUrl;
-      if(prevUrl) URL.revokeObjectURL(prevUrl);
-    } catch(e) {
-      logoEl.src = logoSource;
-    }
+    logoEl.src = logoSource;
     logoEl.classList.remove('hidden');
     nameEl.style.display = 'none';
   } else {
