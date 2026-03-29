@@ -1,7 +1,7 @@
 // ============================================================================
 // 1. CONSTANTS, GLOBALS & STATE
 // ============================================================================
-const APP_VERSION = '3.912';
+const APP_VERSION = '3.91';
 
 // The URL used when testing outside of Google Apps Script (e.g. GitHub)
 const GAS_URL = "https://script.google.com/macros/s/AKfycbzoqPyDDmpdgNp60xAKrXtClxqOdWxmmwgnH4sK7fM-rcM8LyPoE9Br7Lg6CtI3hCREzw/exec";
@@ -1110,28 +1110,82 @@ function openJobModal(jid) {
   const mOpts=gl('payment_methods').map(m=>`<option value="${esc(m)}" ${j.Payment_Method===m?'selected':''}>${esc(m)}</option>`).join('');
 
   if(isComp){
-    const addCost=parseMoney(j.Additional_Cost);
+    const addCost    = parseMoney(j.Additional_Cost);
+    const surcharge  = parseMoney(j.Surcharge);
+    const rate       = parseFloat(S.biz.rate) || 50;
+    const tRate      = taxRate();
+
+    // Rebuild labour/base from stored values so display always matches reality
+    let labourAmt = 0;
+    let labourLabel = '';
+    if (j.Pricing_Type === 'Flat') {
+      labourAmt  = parseMoney(j.Flat_Rate) || parseMoney(j.Total_Amount) / (1 + tRate);
+      labourLabel = 'Flat rate';
+    } else {
+      const hrs  = parseFloat(j.Actual_Duration || j.Estimated_Hours || 0);
+      labourAmt  = hrs * rate;
+      labourLabel = `${hrs} hrs × $${rate.toFixed(0)}/hr`;
+    }
+
+    const sub   = labourAmt + surcharge + addCost;
+    const hst   = sub * tRate;
+    const total = sub + hst;
+
+    const bdr = `border-top:1px solid var(--green-b);margin:8px 0 6px;`;
+    const lrow = (lbl, sub, val, bold) =>
+      `<div style="display:flex;justify-content:space-between;margin-bottom:4px;${bold?'font-weight:900;font-size:14px;':'font-size:13px;'}">
+        <span style="color:var(--txt2);">${lbl}${sub?` <span style="color:var(--txt3);font-size:11px;">${sub}</span>`:''}
+        </span><span style="color:var(--txt);font-weight:${bold?'900':'600'};">${val}</span>
+      </div>`;
+
     $('m-job-body').innerHTML=`
       <div style="background:var(--green-s);border:1.5px solid var(--green-b);border-radius:var(--r);padding:14px;margin-bottom:16px;">
-        <div style="font-family:'Nunito',sans-serif;font-size:16px;font-weight:900;color:var(--green);margin-bottom:10px;">✅ ${esc(j.Service)}</div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:13px;">
-          <div><div style="color:var(--txt3);font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;">Date</div><div style="font-weight:700;color:var(--txt);">${fmtDFull(sd)}</div></div>
-          <div><div style="color:var(--txt3);font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;">Time</div><div style="font-weight:700;color:var(--txt);">${j.Time&&!j.Time.includes('1899')?fmtT(j.Time):'—'}</div></div>
-          <div><div style="color:var(--txt3);font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;">Actual Hours</div><div style="font-weight:700;color:var(--txt);">${j.Actual_Duration||'—'}</div></div>
-          <div><div style="color:var(--txt3);font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;">Total</div><div style="font-weight:700;color:var(--green);">$${parseMoney(j.Total_Amount).toFixed(2)}</div></div>
+        <div style="font-family:'Nunito',sans-serif;font-size:16px;font-weight:900;color:var(--green);margin-bottom:4px;">✅ ${esc(j.Service)}</div>
+        <div style="font-size:12px;color:var(--txt3);margin-bottom:12px;">
+          ${fmtDFull(sd)}${j.Time&&!j.Time.includes('1899')?' @ '+fmtT(j.Time):''}
+          ${j.Completion_Date?' · Completed '+fmtD(j.Completion_Date):''}
         </div>
-        ${addCost>0?`<div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--green-b);font-size:13px;color:var(--txt2);">
-          <div style="color:var(--txt3);font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;">Additional Costs</div>
-          <div>$${addCost.toFixed(2)} + HST${j.Additional_Cost_Notes?' — '+esc(j.Additional_Cost_Notes):''}</div>
+
+        ${lrow(labourLabel, '', '$'+labourAmt.toFixed(2))}
+        ${surcharge > 0 ? lrow('Surcharge', '', '$'+surcharge.toFixed(2)) : ''}
+        ${addCost > 0 ? lrow(
+            'Additional costs',
+            j.Additional_Cost_Notes ? esc(j.Additional_Cost_Notes) : '',
+            '$'+addCost.toFixed(2)
+          ) : ''}
+
+        <div style="${bdr}"></div>
+        ${lrow('Subtotal', '', '$'+sub.toFixed(2))}
+        ${tRate > 0 ? lrow('HST ('+Math.round(tRate*100)+'%)', addCost > 0 ? 'incl. on additional costs' : '', '$'+hst.toFixed(2)) : ''}
+        <div style="${bdr}"></div>
+        ${lrow('Total', '', '$'+total.toFixed(2), true)}
+
+        ${j.Completion_Notes?`<div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--green-b);">
+          <div style="color:var(--txt3);font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;">Completion Notes</div>
+          <div style="font-size:13px;color:var(--txt);line-height:1.5;">${esc(j.Completion_Notes)}</div>
         </div>`:''}
-        ${j.Completion_Notes?`<div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--green-b);"><div style="color:var(--txt3);font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;">Completion Notes</div><div style="font-size:13px;color:var(--txt);line-height:1.5;">${esc(j.Completion_Notes)}</div></div>`:''}
-        ${j.Job_Notes?`<div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--green-b);"><div style="color:var(--txt3);font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;">Job Notes</div><div style="font-size:13px;color:var(--txt);line-height:1.5;">${esc(j.Job_Notes)}</div></div>`:''}
+        ${j.Job_Notes?`<div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--green-b);">
+          <div style="color:var(--txt3);font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;">Job Notes</div>
+          <div style="font-size:13px;color:var(--txt);line-height:1.5;">${esc(j.Job_Notes)}</div>
+        </div>`:''}
+
         <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--green-b);display:flex;gap:10px;flex-wrap:wrap;">
-          <div style="flex:1;"><div style="color:var(--txt3);font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;">Payment</div><div style="font-weight:700;font-size:13px;">${isPaid?'✅ '+esc(j.Payment_Method||'Paid'):'⏳ Unpaid'}</div></div>
-          <div style="flex:1;"><div style="color:var(--txt3);font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;">Review</div><div style="font-weight:700;font-size:13px;">${j.Review_Status||'—'}</div></div>
+          <div style="flex:1;">
+            <div style="color:var(--txt3);font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;">Payment</div>
+            <div style="font-weight:700;font-size:13px;">${isPaid?'✅ '+esc(j.Payment_Method||'Paid'):'⏳ Unpaid'}</div>
+          </div>
+          <div style="flex:1;">
+            <div style="color:var(--txt3);font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;">Review</div>
+            <div style="font-weight:700;font-size:13px;">${j.Review_Status||'—'}</div>
+          </div>
         </div>
       </div>
-      ${!isPaid?`<div class="fg"><label class="fl">Payment Method</label><select class="fs" id="je-pm">${mOpts}</select></div><button class="btn b-g mb8" onclick="submitJobEdit(this, true)">💰 Mark as Paid</button>`:''}
+      ${!isPaid?`
+        <div class="fg"><label class="fl">Payment Method</label>
+          <select class="fs" id="je-pm">${mOpts}</select>
+        </div>
+        <button class="btn b-g mb8" onclick="submitQuickPaidFromSummary(this)">💰 Mark as Paid — $${total.toFixed(2)}</button>
+      `:''}
       <button class="btn b-s mb8" onclick="openJobModalEdit()">✏️ Edit This Job</button>
       <button class="btn b-r mb8" onclick="confirmDeleteJob()">🗑️ Delete Job</button>
       <button class="btn b-s" onclick="closeMo('m-job')">Close</button>`;
@@ -1234,6 +1288,8 @@ async function submitJobEdit(btn, markPaid = false) {
     const flatRate = getVal('je-flat');
     const sur = getVal('je-sur');
     const addCost = getVal('je-addcost');
+    const addCostNotes = $('je-addcost-notes')?.value.trim() || '';
+    const method = $('je-pm')?.value || 'Cash';
     const isFlat = $('je-pr-f')?.classList.contains('on');
     const pType = isFlat ? 'Flat' : 'Hourly';
 
@@ -1264,24 +1320,46 @@ async function submitJobEdit(btn, markPaid = false) {
       Estimated_Hours: estHrs !== undefined ? String(estHrs) : j.Estimated_Hours,
       Pricing_Type: pType, Flat_Rate: flatRate !== undefined ? String(flatRate) : j.Flat_Rate,
       Surcharge: String(currentSur), Additional_Cost: String(currentAdd),
+      Additional_Cost_Notes: addCostNotes || j.Additional_Cost_Notes,
       Total_Amount: tot.toFixed(2)
     });
+
+    // Update payment state locally so every display reflects the new amount immediately
+    if (markPaid) {
+      j.Payment_Status = 'Paid';
+      j.Payment_Method = method;
+      const tod = today();
+      const inv = S.financials.find(f => f.Job_ID === jid);
+      if (inv) {
+        inv.Status = 'Paid'; inv.Payment_Method = method;
+        inv.Paid_Date = tod; inv.Amount = tot.toFixed(2);
+      } else {
+        S.financials.push({ Invoice_ID: 'INV' + Date.now(), Job_ID: jid,
+          Client_ID: j.Client_ID, Amount: tot.toFixed(2),
+          Status: 'Paid', Payment_Method: method, Paid_Date: tod });
+      }
+    } else {
+      // Even if not marking paid, keep existing financial record amount in sync
+      const inv = S.financials.find(f => f.Job_ID === jid);
+      if (inv && inv.Status !== 'Paid') inv.Amount = tot.toFixed(2);
+    }
 
     if (!S.isDemo) {
       await gasCall({
         action: 'updateJobDetails',
         jobId: jid,
-        totalAmount: tot.toFixed(2), 
+        totalAmount: tot.toFixed(2),
         svc, date, time, notes, comp, hrs: actHrs,
         estimatedHours: estHrs, flatRate: flatRate,
-        surcharge: sur, additionalCost: addCost, markPaid
+        surcharge: sur, additionalCost: addCost,
+        additionalCostNotes: addCostNotes, method, markPaid
       });
     }
 
     try { localStorage.removeItem('smhq_cache'); } catch (e) { }
     if (S.view === 'dashboard') renderDash();
     else if (S.view === 'profile') openProfile(j.Client_ID);
-    showToast('✓ Job updated');
+    showToast(markPaid ? '💰 Paid — $' + tot.toFixed(2) + ' recorded' : '✓ Job updated');
 
   } catch (err) {
     console.error("Save Error:", err);
@@ -1349,6 +1427,53 @@ function bookAgain(jid) {
   setSched('hard');
   navTo('book-job',true);
   showToast('📋 Pre-filled from last job — pick a new date');
+}
+
+// Mark as Paid from the completed job summary view.
+// Uses existing Total_Amount as-is — user must edit the job first if amounts need adjusting.
+async function submitQuickPaidFromSummary(btn) {
+  if (_isSaving) return;
+  _isSaving = true;
+  const origText = btn ? btn.textContent : '';
+  if (btn) { btn.disabled = true; btn.textContent = 'Saving...'; }
+
+  try {
+    const jid   = S.jobModal;
+    const method = $('je-pm')?.value || 'Cash';
+    const j     = S.jobs.find(x => x.Job_ID === jid);
+    if (!j) throw new Error('Job not found');
+
+    const amt = parseMoney(j.Total_Amount);
+    const tod = today();
+
+    // Update local job state
+    j.Payment_Status = 'Paid';
+    j.Payment_Method = method;
+
+    // Update or create financial record
+    const inv = S.financials.find(f => f.Job_ID === jid);
+    if (inv) {
+      inv.Status = 'Paid'; inv.Payment_Method = method;
+      inv.Paid_Date = tod; inv.Amount = amt.toFixed(2);
+    } else {
+      S.financials.push({ Invoice_ID: 'INV' + Date.now(), Job_ID: jid,
+        Client_ID: j.Client_ID, Amount: amt.toFixed(2),
+        Status: 'Paid', Payment_Method: method, Paid_Date: tod });
+    }
+
+    closeMo('m-job');
+    if (!S.isDemo) await gasCall({ action: 'markInvoicePaid', jobId: jid, method, ppAmt: amt.toFixed(2) });
+    try { localStorage.removeItem('smhq_cache'); } catch(e) {}
+
+    refreshData();
+    showToast('💰 Paid — $' + amt.toFixed(2) + ' recorded');
+  } catch (err) {
+    console.error('Pay error:', err);
+    showToast('⚠️ Error recording payment');
+  } finally {
+    _isSaving = false;
+    if (btn) { btn.disabled = false; btn.textContent = origText; }
+  }
 }
 
 function jeSetPrice(t) {
