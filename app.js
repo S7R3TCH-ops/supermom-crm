@@ -1,3 +1,48 @@
+// v3.95
+// 1. THE PIPE: Unlimited payload capacity, bypasses CORS preflight
+async function gasCall(payload, isRetry = false) {
+  showLoader();
+  try {
+    const response = await fetch(GAS_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify(payload)
+    });
+    const json = await response.json();
+    hideLoader();
+    return json;
+  } catch (e) {
+    hideLoader();
+    console.error('GAS Connection Error:', e);
+    // Silent fail/queue for offline
+    return { success: false, offline: true };
+  }
+}
+
+// 2. THE BRAIN: The single source of truth for ALL money
+function getJobTotals(j) {
+  const rate = parseFloat(S.biz.rate) || 50;
+  const taxRate = String(S.biz.tax_enabled).toUpperCase() === 'TRUE' ? 0.13 : 0;
+  
+  // Logic: Use Flat Rate if set, otherwise use Hours * Rate
+  let base = (j.Pricing_Type === 'Flat') 
+    ? parseMoney(j.Flat_Rate) 
+    : (parseFloat(j.Job_Status === 'Completed' ? j.Actual_Duration : j.Estimated_Hours) || 0) * rate;
+
+  const sub = base + parseMoney(j.Surcharge) + parseMoney(j.Additional_Cost);
+  const hst = sub * taxRate;
+  const total = sub + hst;
+  
+  // Calculate Balance: If status is 'Paid', balance is 0. Otherwise, subtract PrePaid_Amount.
+  const paid = (j.Payment_Status === 'Paid') ? total : parseMoney(j.PrePaid_Amount);
+  return { 
+    subtotal: sub, 
+    hst: hst, 
+    total: total, 
+    paid: paid, 
+    balance: Math.max(0, total - paid) 
+  };
+}
 // ============================================================================
 // 1. CONSTANTS, GLOBALS & STATE
 // ============================================================================
@@ -158,7 +203,7 @@ async function loadAllData() {
     }
   } catch(e){}
   
-  const r = await gasCall({ action: 'getAllData' }); 
+  const r = gasCall({ action: 'getAllData' }); 
   if(r.success){
     S.clients = (r.clients || []).filter(c => !_pendingDeletes.clients.has(c.Client_ID));
     S.jobs = (r.jobs || []).filter(j => !_pendingDeletes.jobs.has(j.Job_ID));
@@ -186,7 +231,7 @@ async function drainOfflineQueue() {
     
     for(const item of q){
       try{
-        const r = await gasCall(item.payload, true);
+        const r = gasCall(item.payload, true);
         if(r.offline || !r.success) failed.push(item);
       } catch(e){
         failed.push(item);
@@ -298,16 +343,16 @@ function navTo(v, push=false) {
 }
 
 function goBack() {
-  if(_backLock) return; _backLock=true; setTimeout(()=>_backLock=false,400);
-  if(S.stack.length){
-    const p = S.stack.pop();
-    document.querySelectorAll('.view').forEach(el=>el.classList.remove('active'));
-    document.getElementById('view-'+p).classList.add('active');
-    requestAnimationFrame(()=>{document.getElementById('scroll').scrollTop=0;});
-    S.view=p; updHeader(p); updNav(p);
-    if(p==='dashboard') renderDash();
-    else if(p==='clients') renderCli();
-  } else navTo('dashboard');
+  if (_backLock) return; 
+  _backLock = true; 
+  setTimeout(() => _backLock = false, 250); // Shorter lock for faster feel
+
+  if (S.stack.length) {
+    const prevView = S.stack.pop();
+    navTo(prevView, false); // false = don't push to stack again
+  } else {
+    navTo('dashboard');
+  }
 }
 
 function updHeader(v) {
@@ -349,100 +394,38 @@ function updNav(v) {
 // ============================================================================
 
 function renderDash() {
-  renderEarnBars();
-  const now = new Date();
-  const thisMonth = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0');
-
-  const allPaid = S.financials.filter(f => f.Status === 'Paid');
-  const paidThisMonth = allPaid.filter(f => String(f.Paid_Date).startsWith(thisMonth));
-  const displayPaid = S.moneyFilter === 'month' ? paidThisMonth : allPaid;
-  const totalCollected = displayPaid.reduce((sum, f) => sum + parseMoney(f.Amount), 0);
-
-  const owedJobs = S.jobs.filter(j => j.Job_Status === 'Completed' && !isPaidJob(j));
-  const totalOwed = owedJobs.reduce((sum, j) => sum + parseMoney(j.Total_Amount), 0);
-
-  if($('m-owed')) $('m-owed').textContent = '$' + totalOwed.toFixed(2);
-  if($('m-owed-s')) $('m-owed-s').textContent = owedJobs.length + ' unpaid';
-  if($('m-paid')) $('m-paid').textContent = '$' + totalCollected.toFixed(2);
-  if($('m-paid-s')) $('m-paid-s').textContent = displayPaid.length + (S.moneyFilter === 'month' ? ' this month' : ' total');
-
-  if($('mf-month')) $('mf-month').className = S.moneyFilter === 'month' ? 'tb on' : 'tb';
-  if($('mf-all')) $('mf-all').className = S.moneyFilter === 'all' ? 'tb on' : 'tb';
-
   const tod = today();
-  const todayJobs = S.jobs.filter(j => j.Job_Status === 'Scheduled' && j.Scheduled_Date === tod)
-    .map(j => {
-      let isPastDue = false;
-      if(j.Time && !j.Time.includes('1899')){
-        try {
-          const [h, m] = j.Time.split(':');
-          const start = new Date(); start.setHours(parseInt(h), parseInt(m), 0, 0);
-          const hrs = parseFloat(j.Estimated_Hours || 1);
-          const end = new Date(start.getTime() + hrs * 3600000);
-          isPastDue = end < now;
-        } catch(e) {}
-      }
-      return {...j, _pastDue: isPastDue};
-    })
-    .sort((a, b) => {
-      if (a._pastDue && !b._pastDue) return -1;
-      if (!a._pastDue && b._pastDue) return 1;
-      return (a.Time || '').localeCompare(b.Time || '');
-    });
 
-  if($('t-ct')) $('t-ct').textContent = todayJobs.length ? todayJobs.length + ' job(s) scheduled today' : 'No jobs today — enjoy your day! 🌸';
+  // Clear categories
+  const cat = { sched: [], overdue: [], unschd: [], owed: [], done: [] };
+
+  S.jobs.forEach(j => {
+    const totals = getJobTotals(j);
+    if (j.Job_Status === 'Scheduled') {
+      if (!j.Scheduled_Date) cat.unschd.push(j);
+      else if (j.Scheduled_Date < tod) cat.overdue.push(j);
+      else cat.sched.push(j);
+    } else if (j.Job_Status === 'Completed') {
+      if (totals.balance > 0) cat.owed.push(j);
+      else cat.done.push(j);
+    }
+  });
+
+  // Render Sections
+  dsec('today-jobs-list', 'view-dashboard', cat.sched.filter(j => j.Scheduled_Date === tod), 'sched');
+  dsec('d-upcoming', 'd-upcoming-sec', cat.sched.filter(j => j.Scheduled_Date > tod).slice(0, 5), 'sched');
+  dsec('d-overdue', 'd-overdue-sec', cat.overdue, 'overdue');
+  dsec('d-unschd', 'd-unschd-sec', cat.unschd, 'unschd');
+  dsec('d-owed', 'd-owed-sec', cat.owed, 'owed');
+  dsec('d-arc', 'd-arc-sec', cat.done.sort((a,b) => b.Completion_Date.localeCompare(a.Completion_Date)).slice(0,3), 'paid');
+
+  // Fast Summary Update
+  let totalOwed = 0;
+  cat.owed.forEach(j => totalOwed += getJobTotals(j).balance);
+  $('m-owed').textContent = '$' + totalOwed.toFixed(2);
   
-  const upNextId = todayJobs.find(j => !j._pastDue)?.Job_ID || null;
-  const tjList = $('today-jobs-list');
-  if(tjList) {
-    tjList.innerHTML = todayJobs.map(j => {
-      const c = getCli(j.Client_ID);
-      const pd = j._pastDue;
-      const isUpNext = !pd && j.Job_ID === upNextId;
-      return `<div class="today-job" data-action="open-job" data-jid="${esc(j.Job_ID)}" style="${pd?'border-left:3px solid var(--orange);background:rgba(192,88,0,.07);':isUpNext?'border-left:3px solid var(--pink);':''}">
-        <div class="tj-time" style="${pd?'color:var(--orange);':isUpNext?'color:var(--pink);font-weight:900;':''}">${j.Time && !j.Time.includes('1899') ? fmtT(j.Time) : 'All day'}</div>
-        <div class="tj-info">
-          <div class="tj-name">${esc(fullN(c))}${pd?` <span class="pill p-ora" style="font-size:9px;">⚠️ Past Due</span>`:isUpNext?` <span class="pill p-pink" style="font-size:9px;">⚡ Up Next</span>`:''}</div>
-          <div class="tj-svc">${esc(j.Service)}</div>
-        </div>
-        <button class="btn b-sm b-p" data-action="complete" data-jid="${esc(j.Job_ID)}">✅ Done</button>
-      </div>`;
-    }).join('');
-  }
-
-  const allFuture = S.jobs.filter(j => j.Job_Status === 'Scheduled' && j.Scheduled_Date > tod && j.Scheduled_Date !== '')
-    .sort((a, b) => (a.Scheduled_Date || '').localeCompare(b.Scheduled_Date || ''));
-  dsec('d-upcoming', 'd-upcoming-sec', allFuture.slice(0, 5), 'sched');
-  
-  const unschd = S.jobs.filter(j => j.Job_Status === 'Scheduled' && (!j.Scheduled_Date || j.Scheduled_Date === ''));
-  dsec('d-unschd', 'd-unschd-sec', unschd, 'unschd');
-
-  const overdue = S.jobs.filter(j => j.Job_Status === 'Scheduled' && j.Scheduled_Date !== '' && j.Scheduled_Date < tod)
-    .sort((a, b) => (a.Scheduled_Date || '').localeCompare(b.Scheduled_Date || ''));
-  dsec('d-overdue', 'd-overdue-sec', overdue, 'overdue');
-
-  dsec('d-owed', 'd-owed-sec', owedJobs, 'owed');
-  dsec('d-fu', 'd-fu-sec', S.jobs.filter(j => j.Follow_Up === 'Yes' && j.Job_Status !== 'Cancelled'), 'fu');
-  dsec('d-rev', 'd-rev-sec', S.jobs.filter(j => j.Review_Status === 'Pending' && j.Job_Status === 'Completed'), 'review');
-
-  const archived = S.jobs.filter(isArchived).sort((a, b) => (b.Completion_Date || '').localeCompare(a.Completion_Date || ''));
-  dsec('d-arc', 'd-arc-sec', archived.slice(0, 3), 'paid');
-
-  const leads = S.clients.filter(c => c.Status === 'Lead');
-  if(!leads.length) {
-    if($('d-lead-sec')) $('d-lead-sec').style.display = 'none';
-  } else {
-    if($('d-lead-sec')) $('d-lead-sec').style.display = '';
-    if($('d-lead')) $('d-lead').innerHTML = leads.map(c => `
-      <div class="jr lead">
-        <div class="ji">🟡</div>
-        <div class="jd" data-action="open-profile" data-cid="${esc(c.Client_ID)}" style="cursor:pointer;">
-          <div class="jn">${esc(fullN(c))}</div>
-          <div class="jm">${esc(c.Phone || 'No phone')} · ${esc(c.Referral_Source || '—')}</div>
-        </div>
-        <button class="btn b-sm b-p" data-action="booklead" data-cid="${esc(c.Client_ID)}">📅 Book</button>
-      </div>`).join('');
-  }
+  // Persistence
+  localStorage.setItem('smhq_cache', JSON.stringify({clients: S.clients, jobs: S.jobs, financials: S.financials, lists: S.lists}));
 }
 
 function setMoneyFilter(f) { S.moneyFilter=f; renderDash(); }
@@ -761,7 +744,7 @@ async function submitClient(thenBook=false) {
     
   if(S.editCli){
     const c=S.clients.find(x=>x.Client_ID===S.editCli);if(c)Object.assign(c,data);
-    if(!S.isDemo)await gasCall({action:'updateClient',clientId:S.editCli,...data});
+    if(!S.isDemo)gasCall({action:'updateClient',clientId:S.editCli,...data});
     showToast('✓ Client updated');refreshData();goBack();
   }else{
     const phone=data.Phone.replace(/\D/g,'');
@@ -777,7 +760,7 @@ async function submitClient(thenBook=false) {
       showDupWarning(dup,data);return;
     }
     data.Client_ID='C'+Date.now();data.Created_Date=today();S.clients.push(data);
-    if(!S.isDemo){const r=await gasCall({action:'addClient',...data});if(r.Client_ID){
+    if(!S.isDemo){const r=gasCall({action:'addClient',...data});if(r.Client_ID){
       const idx=S.clients.findIndex(x=>x.Client_ID===data.Client_ID);
       if(idx!==-1)S.clients[idx].Client_ID=r.Client_ID;
       data.Client_ID=r.Client_ID;
@@ -839,7 +822,7 @@ function showDupWarning(existing, newData) {
 
 async function forceAddClient(data) {
   data.Client_ID='C'+Date.now();data.Created_Date=today();S.clients.push(data);
-  if(!S.isDemo){const r=await gasCall({action:'addClient',...data});if(r.Client_ID){
+  if(!S.isDemo){const r=gasCall({action:'addClient',...data});if(r.Client_ID){
     const idx=S.clients.findIndex(x=>x.Client_ID===data.Client_ID);
     if(idx!==-1)S.clients[idx].Client_ID=r.Client_ID;
     data.Client_ID=r.Client_ID;
@@ -884,7 +867,7 @@ async function deleteClient() {
   renderCli();
 
   if (!S.isDemo) {
-    await gasCall({ action: 'deleteClient', clientId: cid });
+    gasCall({ action: 'deleteClient', clientId: cid });
     try { localStorage.removeItem('smhq_cache'); } catch(e) {}
   }
 }
@@ -973,39 +956,47 @@ function setPrice(t) {
   calc();
 }
 
+// Centralized calculation for the Book Job screen
 function calc() {
-  const rate = hourlyRate();
-  const tRate = taxRate(); 
-  let base = 0;
+  const mockJob = {
+    Pricing_Type: S.priceType,
+    Estimated_Hours: $('bj-hrs')?.value,
+    Flat_Rate: $('bj-flat')?.value,
+    Surcharge: $('bj-sur')?.value,
+    Additional_Cost: 0,
+    Job_Status: 'Scheduled'
+  };
+  const totals = getJobTotals(mockJob);
   
-  if(S.priceType === 'Hourly'){
-    const hrs = parseFloat($('bj-hrs')?.value) || 0;
-    base = hrs * rate;
-  } else {
-    base = parseFloat($('bj-flat')?.value) || 0;
-  }
-  
-  const sur = parseFloat($('bj-sur')?.value) || 0;
-  const subtotal = base + sur;
-  const hst = subtotal * tRate;
-  const tot = subtotal + hst;
+  if($('c-base')) $('c-base').textContent = '$' + totals.subtotal.toFixed(2);
+  if($('c-sur')) $('c-sur').textContent = '$' + parseMoney($('bj-sur')?.value).toFixed(2);
+  if($('c-hst')) $('c-hst').textContent = '$' + totals.hst.toFixed(2);
+  if($('c-tot')) $('c-tot').textContent = '$' + totals.total.toFixed(2);
+}
 
-  if($('c-base')) $('c-base').textContent = '$' + base.toFixed(2);
-  if($('c-sur')) $('c-sur').textContent = '$' + sur.toFixed(2);
+// Centralized calculation for the Completion screen
+function calcJobTotal() {
+  const j = getJob(S.jobModal);
+  const mockJob = {
+    ...j,
+    Actual_Duration: $('cp-hrs')?.value,
+    Additional_Cost: $('cp-addcost')?.value,
+    Surcharge: j.Surcharge,
+    Job_Status: 'Completed'
+  };
+  const totals = getJobTotals(mockJob);
   
-  const hstRow = $('c-hst')?.closest('.pr');
-  if (hstRow) {
-    if (tRate === 0) {
-      hstRow.style.display = 'none';
-    } else {
-      hstRow.style.display = 'flex';
-      $('c-hst').textContent = '$' + hst.toFixed(2);
-      const taxPct = Math.round(tRate * 100);
-      hstRow.querySelector('span').textContent = `HST (${taxPct}%)`;
-    }
+  // Update the preview rows
+  const rows = $('cp-preview-rows');
+  if(rows) {
+    rows.innerHTML = `
+      <div class="pr"><span>Labour/Base</span><span>$${(totals.subtotal - parseMoney(j.Surcharge) - parseMoney(mockJob.Additional_Cost)).toFixed(2)}</span></div>
+      ${parseMoney(j.Surcharge) > 0 ? `<div class="pr"><span>Surcharge</span><span>$${parseMoney(j.Surcharge).toFixed(2)}</span></div>` : ''}
+      ${parseMoney(mockJob.Additional_Cost) > 0 ? `<div class="pr"><span>Additional</span><span>$${parseMoney(mockJob.Additional_Cost).toFixed(2)}</span></div>` : ''}
+      <div class="pr" style="color:var(--txt3)"><span>HST</span><span>$${totals.hst.toFixed(2)}</span></div>
+      <div class="pr tot"><span>Total</span><span>$${totals.total.toFixed(2)}</span></div>
+    `;
   }
-
-  if($('c-tot')) $('c-tot').textContent = '$' + tot.toFixed(2);
 }
 
 function checkTimeConflict() {
@@ -1027,74 +1018,38 @@ function checkTimeConflict() {
   box.classList.remove('hidden');
 }
 
-async function submitJob() {
-  if(_isSaving)return; _isSaving = true;
+function submitJob() {
+  const cid = $('bj-cli')?.value;
+  if (!cid) return showToast('⚠️ Select a client');
   
-  const btn = document.querySelector('#view-book-job .btn.b-p'); 
-  const origText = '📅 Save Job';
-  
-  if(btn) { 
-    btn.disabled = true; 
-    btn.innerHTML = '<span>⏳ Saving...</span>';
-    btn.style.opacity = '0.7';
-  }
+  // 1. Build the Job Object Locally
+  const jobData = {
+    Job_ID: 'J' + Date.now(),
+    Client_ID: cid,
+    Service: $('bj-svc')?.value || '',
+    Scheduled_Date: S.schedType === 'asap' ? '' : $('bj-date')?.value,
+    Time: $('bj-time')?.value || '09:00',
+    Pricing_Type: S.priceType,
+    Estimated_Hours: $('bj-hrs')?.value || '2',
+    Flat_Rate: $('bj-flat')?.value || '0',
+    Surcharge: $('bj-sur')?.value || '0',
+    Job_Status: 'Scheduled',
+    Payment_Status: 'Unpaid',
+    Job_Notes: $('bj-notes')?.value.trim() || '',
+    Created_Date: today()
+  };
 
-  const cid=$('bj-cli')?.value;
-  if(!cid){
-    showToast('⚠️ Select a client'); 
-    _isSaving=false; 
-    if(btn){btn.disabled=false;btn.innerHTML=origText;btn.style.opacity='1';} 
-    return;
-  }
-  
-  const svc=$('bj-svc')?.value||'';
-  const schedType=S.schedType;
-  let date=$('bj-date')?.value||'';const time=$('bj-time')?.value||'';
-  if(schedType!=='asap'&&!date){
-    showToast('⚠️ Enter a date'); 
-    _isSaving=false; 
-    if(btn){btn.disabled=false;btn.innerHTML=origText;btn.style.opacity='1';} 
-    return;
-  }
-  
-  if(schedType==='asap')date='';
-  const rate=hourlyRate();
-  let base=0;
-  if(S.priceType==='Hourly'){base=(parseFloat($('bj-hrs')?.value)||0)*rate;}
-  else{base=parseFloat($('bj-flat')?.value)||0;}
-  const sur=parseFloat($('bj-sur')?.value)||0;
-  const hst=(base+sur)*taxRate();const tot=base+sur+hst;
-  const notes=$('bj-notes')?.value.trim()||'';
-  
-  const data={Job_ID:'J'+Date.now(),Client_ID:cid,Service:svc,Scheduled_Date:date,Completion_Date:'',Time:time,
-    Pricing_Type:S.priceType,Estimated_Hours:S.priceType==='Hourly'?($('bj-hrs')?.value||'2'):'',
-    Flat_Rate:S.priceType==='Flat'?($('bj-flat')?.value||''):'',Surcharge:String(sur),
-    Subtotal:String(base),HST:hst.toFixed(2),Total_Amount:tot.toFixed(2),
-    Job_Status:'Scheduled',Follow_Up:'No',
-    Scheduling_Type:schedType==='hard'?'Hard Date':schedType==='asap'?'ASAP':'By Date',
-    Job_Notes:notes,Completion_Notes:'',Actual_Duration:'',Additional_Cost:'',Additional_Cost_Notes:'',
-    Review_Status:'',Review_Notes:'',Payment_Status:'',Payment_Method:'',
-    Photo_Links:'',Created_Date:today(),PrePaid_Reason:''};
-    
-  S.jobs.push(data);
-  const c=S.clients.find(x=>x.Client_ID===cid);if(c&&c.Status==='Lead')c.Status='Active';
-  showToast('📅 Job booked!');
-  
-  if(S.stack.includes('add-client')){S.stack=[];openProfile(cid);}
-  else if(S.stack.includes('profile')){goBack();openProfile(cid);}
-  else{goBack();renderDash();}
+  // 2. Update Memory & Cache Immediately
+  S.jobs.push(jobData);
+  localStorage.setItem('smhq_cache', JSON.stringify({clients: S.clients, jobs: S.jobs, financials: S.financials, lists: S.lists}));
 
-  _isSaving=false;
-  if(btn){btn.disabled=false;btn.innerHTML=origText;btn.style.opacity='1';}
+  // 3. UI Transition - GO FAST
+  showToast('📅 Job Booked!');
+  if (S.stack.includes('profile')) { goBack(); openProfile(cid); } 
+  else { navTo('dashboard'); }
 
-  if(!S.isDemo){
-    gasCall({action:'addJob',...data}).then(r=>{
-      if(r&&r.Job_ID){
-        const idx=S.jobs.findIndex(x=>x.Job_ID===data.Job_ID);
-        if(idx!==-1)S.jobs[idx].Job_ID=r.Job_ID;
-      }
-    });
-  }
+  // 4. Background Sync (The "Turbocharger")
+  gasCall({ action: 'addJob', ...jobData });
 }
 
 function openJobModal(jid) {
@@ -1346,7 +1301,7 @@ async function submitJobEdit(btn, markPaid = false) {
     }
 
     if (!S.isDemo) {
-      await gasCall({
+      gasCall({
         action: 'updateJobDetails',
         jobId: jid,
         totalAmount: tot.toFixed(2),
@@ -1463,7 +1418,7 @@ async function submitQuickPaidFromSummary(btn) {
     }
 
     closeMo('m-job');
-    if (!S.isDemo) await gasCall({ action: 'markInvoicePaid', jobId: jid, method, ppAmt: amt.toFixed(2) });
+    if (!S.isDemo) gasCall({ action: 'markInvoicePaid', jobId: jid, method, ppAmt: amt.toFixed(2) });
     try { localStorage.removeItem('smhq_cache'); } catch(e) {}
 
     refreshData();
@@ -1483,31 +1438,6 @@ function jeSetPrice(t) {
   if($('je-hrs-g'))$('je-hrs-g').style.display=t==='Flat'?'none':'';
   if($('je-flat-g'))$('je-flat-g').style.display=t==='Flat'?'':'none';
   jeCalc();
-}
-
-function jeCalc() {
-  const isFlat=$('je-pr-f')?.classList.contains('on');
-  const rate=hourlyRate();
-  let base=0;
-  if(isFlat){base=parseFloat($('je-flat')?.value)||0;}
-  else{base=(parseFloat($('je-est-hrs')?.value)||0)*rate;}
-  const sur=parseFloat($('je-sur')?.value)||0;
-  const addCost=parseFloat($('je-addcost')?.value)||0;
-  const sub=base+sur+addCost;
-  const hst=sub*taxRate();
-  const total=sub+hst;
-  const preview=$('je-calc-preview');
-  if(!preview)return;
-  if(sub===0){preview.style.display='none';return;}
-  preview.style.display='';
-  const taxPct=Math.round(taxRate()*100);
-  let html=`<div style="display:flex;justify-content:space-between;margin-bottom:3px;"><span>${isFlat?'Flat rate':'Labour ('+($('je-est-hrs')?.value||0)+' hrs × $'+rate+'/hr)'}</span><span>$${base.toFixed(2)}</span></div>`;
-  if(sur>0)html+=`<div style="display:flex;justify-content:space-between;margin-bottom:3px;"><span>Surcharge</span><span>$${sur.toFixed(2)}</span></div>`;
-  if(addCost>0)html+=`<div style="display:flex;justify-content:space-between;margin-bottom:3px;"><span>Additional costs</span><span>$${addCost.toFixed(2)}</span></div>`;
-  html+=`<div style="border-top:1px solid var(--blue-b);margin:6px 0 4px;"></div>`;
-  html+=`<div style="display:flex;justify-content:space-between;margin-bottom:3px;color:var(--txt3);"><span>HST (${taxPct}%)</span><span>$${hst.toFixed(2)}</span></div>`;
-  html+=`<div style="display:flex;justify-content:space-between;font-family:'Nunito',sans-serif;font-weight:900;color:var(--txt);font-size:14px;"><span>New Total</span><span>$${total.toFixed(2)}</span></div>`;
-  preview.innerHTML=html;
 }
 
 function jFU(v) { S.followUp=v; $('jfu-y')?.classList.toggle('on',v==='Yes'); $('jfu-n')?.classList.toggle('on',v==='No'); }
@@ -1546,7 +1476,7 @@ async function submitQuickPaid(btn) {
   if(inv){inv.Status='Paid';inv.Payment_Method=method;inv.Paid_Date=tod;}
   else S.financials.push({Invoice_ID:'INV'+Date.now(),Job_ID:jid,Client_ID:j.Client_ID,Amount:j.Total_Amount,Status:'Paid',Payment_Method:method,Paid_Date:tod});
   closeMo('m-qpaid');
-  if(!S.isDemo)await gasCall({action:'markInvoicePaid',jobId:jid,method,ppReason:''});
+  if(!S.isDemo)gasCall({action:'markInvoicePaid',jobId:jid,method,ppReason:''});
   refreshData();showToast('💰 Payment recorded — $'+parseMoney(j.Total_Amount).toFixed(2));
   _isSaving=false;
 }
@@ -1598,84 +1528,6 @@ function openCompleteModal(jid) {
       <button class="btn b-p mb8 mt8" id="cp-save-btn" onclick="submitComplete(this)">✅ Save Job</button>
       <button class="btn b-s" onclick="closeMo('m-comp')">Cancel</button>`;
     showMo('m-comp');requestAnimationFrame(()=>calcJobTotal());
-  }
-}
-
-function calcJobTotal() {
-  const jid=S.jobModal;const j=getJob(jid);if(!j.Job_ID)return;
-  const rows=$('cp-preview-rows');if(!rows)return;
-  const mOpts=gl('payment_methods').map(m=>`<option value="${esc(m)}">${esc(m)}</option>`).join('');
-  const hrsInput=$('cp-hrs')?.value;
-  const hrsVal=hrsInput!==undefined&&hrsInput!==''?parseFloat(hrsInput)||0:null;
-  const addCost=parseFloat($('cp-addcost')?.value)||0;
-  const rate=parseFloat(j.Hourly_Rate||0)||hourlyRate();
-  const surcharge=parseMoney(j.Surcharge);
-  const prePaidAmt=parseMoney(j.PrePaid_Amount);
-  const isFullPrepay=j.Payment_Status==='Paid';
-  const isPartialPre=j.Payment_Status==='Partial';
-
-  let labourAmt=0;
-  let html='';
-  if(j.Pricing_Type==='Hourly'){
-    const hrs=hrsVal!==null?hrsVal:parseFloat(j.Estimated_Hours||0);
-    labourAmt=hrs*rate;
-    html+=row('Labour',hrs+' hrs × $'+rate.toFixed(0)+'/hr','$'+labourAmt.toFixed(2));
-  } else {
-    labourAmt=parseMoney(j.Flat_Rate)||parseMoney(j.Subtotal)||(parseMoney(j.Total_Amount)/(1+taxRate()));
-    html+=row('Flat rate','','$'+labourAmt.toFixed(2));
-  }
-  if(surcharge>0) html+=row('Surcharge','','$'+surcharge.toFixed(2));
-  if(addCost>0)   html+=row('Additional costs','','$'+addCost.toFixed(2));
-
-  const subtotal=labourAmt+surcharge+addCost;
-  const hst=subtotal*taxRate();
-  const total=subtotal+hst;
-  const remaining=isPartialPre?Math.max(0,total-prePaidAmt):total;
-
-  html+=`<div style="border-top:1px solid var(--blue-b);margin:8px 0 6px;"></div>`;
-  html+=row('Subtotal','','$'+subtotal.toFixed(2));
-  html+=row('HST ('+Math.round(taxRate()*100)+'%)','','$'+hst.toFixed(2),'var(--txt3)');
-  html+=`<div style="display:flex;justify-content:space-between;font-family:'Nunito',sans-serif;font-weight:900;color:var(--txt);font-size:15px;margin-top:6px;padding-top:6px;border-top:1px solid var(--blue-b);"><span>Total</span><span>$${total.toFixed(2)}</span></div>`;
-
-  if(isPartialPre){
-    html+=`<div style="border-top:1px solid var(--blue-b);margin:8px 0 6px;"></div>`;
-    html+=`<div style="display:flex;justify-content:space-between;color:var(--purple);font-weight:700;margin-bottom:4px;"><span>💜 Pre-payment received</span><span>-$${prePaidAmt.toFixed(2)}</span></div>`;
-    html+=`<div style="display:flex;justify-content:space-between;font-family:'Nunito',sans-serif;font-weight:900;color:var(--red);font-size:15px;margin-top:2px;"><span>💸 Balance owing</span><span>$${remaining.toFixed(2)}</span></div>`;
-  }
-  rows.innerHTML=html;
-
-  const ps=$('cp-pay-section');if(!ps)return;
-  if(isFullPrepay){
-    ps.innerHTML=`<div class="info-box purple" style="margin-bottom:14px;">💜 Fully pre-paid — payment already recorded.</div>`;
-    S.payNow=true;
-  } else {
-    const isPartial=isPartialPre;
-    const defaultPaid=isPartial; 
-    if(typeof S.payNow!=='boolean')S.payNow=defaultPaid;
-    ps.innerHTML=`
-      <div class="fg"><label class="fl" style="font-weight:900;color:var(--txt);">${isPartial?'💰 Collect Balance: <strong style="color:var(--red);">$'+remaining.toFixed(2)+'</strong>':'💰 Payment'}</label>
-        <div class="tr">
-          <button class="tb ${S.payNow?'':'on'}" id="pay-l" onclick="setPayNow(false)">⏳ ${isPartial?'Collect later':'Not paid yet'}</button>
-          <button class="tb ${S.payNow?'on':''}" id="pay-n" onclick="setPayNow(true)">💵 ${isPartial?'Collect $'+remaining.toFixed(2)+' now':'Paid now'}</button>
-        </div>
-      </div>
-      <div id="cp-pm-g" class="fg" style="display:${S.payNow?'':'none'};"><label class="fl">Payment Method</label><select class="fs" id="cp-pm">${mOpts}</select></div>
-      ${S.payNow?`<div style="background:var(--green-s);border:2px solid var(--green-b);border-radius:12px;padding:12px 14px;margin-bottom:4px;">
-        <div style="font-family:'Nunito',sans-serif;font-weight:900;font-size:15px;color:var(--green);margin-bottom:4px;">✅ Confirming payment received</div>
-        <div style="font-size:13px;color:var(--txt2);">${isPartial?'Balance':'Total'}: <strong style="color:var(--green);">$${remaining.toFixed(2)}</strong></div>
-      </div>`:''}`;
-  }
-  const btn=$('cp-save-btn');
-  if(btn){
-    if(isFullPrepay) btn.textContent='✅ Save Completed Job';
-    else if(S.payNow){
-      const amt=isPartialPre?remaining:total;
-      btn.textContent='✅ Save + Confirm $'+amt.toFixed(2)+' Received';
-      btn.style.background='var(--green)';
-    } else {
-      btn.textContent='💾 Save Job — Collect Payment Later';
-      btn.style.background='';
-    }
   }
 }
 
@@ -1746,7 +1598,7 @@ async function submitComplete(btn) {
     else S.financials.push({Invoice_ID:'INV'+Date.now(),Job_ID:jid,Client_ID:j.Client_ID,Amount:newTotal.toFixed(2),Status:'Pending',Payment_Method:'',Paid_Date:''});
   }
 
-  if(!S.isDemo)await gasCall({action:'markJobComplete',jobId:jid,followUp:S.followUp,notes,photos,actualHours:hrs,reqRev:S.reqRev,markPaid:S.payNow||isFullPrepay,method,additionalCost:addCost,additionalCostNotes:addCostNotes,totalAmount:newTotal.toFixed(2),reviewStatus:j?.Review_Status||'',paymentStatus:j?.Payment_Status||''});
+  if(!S.isDemo)gasCall({action:'markJobComplete',jobId:jid,followUp:S.followUp,notes,photos,actualHours:hrs,reqRev:S.reqRev,markPaid:S.payNow||isFullPrepay,method,additionalCost:addCost,additionalCostNotes:addCostNotes,totalAmount:newTotal.toFixed(2),reviewStatus:j?.Review_Status||'',paymentStatus:j?.Payment_Status||''});
   const toast=isFullPrepay?'✅ Job complete — fully pre-paid':S.payNow?'✅ Done + $'+newTotal.toFixed(2)+' paid!':'✅ Job saved — payment pending';
   refreshData();showToast(toast);
   _isSaving=false;
@@ -1797,20 +1649,20 @@ async function submitMarkPaid(btn) {
   const invAmt=ppAmt>0?String(ppAmt):j.Total_Amount;
   if(inv){inv.Status='Paid';inv.Payment_Method=method;inv.Paid_Date=tod;inv.Amount=invAmt;}
   else S.financials.push({Invoice_ID:'INV'+Date.now(),Job_ID:jid,Client_ID:j.Client_ID,Amount:invAmt,Status:'Paid',Payment_Method:method,Paid_Date:tod});
-  if(!S.isDemo)await gasCall({action:'markInvoicePaid',jobId:jid,method,ppReason,ppAmt});
+  if(!S.isDemo)gasCall({action:'markInvoicePaid',jobId:jid,method,ppReason,ppAmt});
   refreshData();showToast('💰 Payment recorded!');
   _isSaving=false;
 }
 
 async function markRevRequested(jid) {
   const j=S.jobs.find(x=>x.Job_ID===jid);if(j)j.Review_Status='Requested';
-  if(!S.isDemo)await gasCall({action:'updateJobDetails',jobId:jid,revStatus:'Requested'});
+  if(!S.isDemo)gasCall({action:'updateJobDetails',jobId:jid,revStatus:'Requested'});
   refreshData();showToast('⭐ Review marked as Requested');
 }
 
 async function clearFU(jid) {
   const j=S.jobs.find(x=>x.Job_ID===jid);if(j)j.Follow_Up='No';
-  if(!S.isDemo)await gasCall({action:'updateJobDetails',jobId:jid,followUp:'No'});
+  if(!S.isDemo)gasCall({action:'updateJobDetails',jobId:jid,followUp:'No'});
   refreshData();showToast('✓ Follow-up cleared');
 }
 
@@ -1859,14 +1711,14 @@ async function saveNotes() {
   closeMo('m-notes');
   if(mode==='jobnote'){
     const j=S.jobs.find(x=>x.Job_ID===S.jobModal);if(j)j.Job_Notes=val;
-    if(!S.isDemo)await gasCall({action:'updateJobDetails',jobId:S.jobModal,notes:val});
+    if(!S.isDemo)gasCall({action:'updateJobDetails',jobId:S.jobModal,notes:val});
     refreshData();showToast('✓ Notes saved');
     _isSaving=false;
     if(btn){btn.disabled=false;btn.textContent=origText;}
     return;
   }
   const c=S.clients.find(x=>x.Client_ID===S.curCli);if(c)c[S.notesMeta]=val;
-  if(!S.isDemo)await gasCall({action:'updateClientField',clientId:S.curCli,field:S.notesMeta,value:val});
+  if(!S.isDemo)gasCall({action:'updateClientField',clientId:S.curCli,field:S.notesMeta,value:val});
   refreshData();showToast('✓ Notes saved');
   _isSaving=false;
   if(btn){btn.disabled=false;btn.textContent=origText;}
@@ -2050,7 +1902,7 @@ function saveListItem() {
 
 async function delListItem(k,i) {
   const l=gl(k);const r=l.splice(i,1)[0];S.lists[k]=l;
-  if(!S.isDemo)await gasCall({action:'updateList',listKey:k,list:l});
+  if(!S.isDemo)gasCall({action:'updateList',listKey:k,list:l});
   popLists();renderAdmin();showToast('✕ "'+r+'" removed');
 }
 
