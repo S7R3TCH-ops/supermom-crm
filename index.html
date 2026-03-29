@@ -799,7 +799,6 @@ function hideLoader() { if(--_reqs <= 0) { _reqs = 0; $('global-loader').classLi
 async function gasCall(payload, isRetry = false) {
   showLoader();
 
-  // Helper to trap failed requests and queue them for later sync
   const handleOffline = () => {
     if (!isRetry && payload.action !== 'getAllData') {
       const q = JSON.parse(localStorage.getItem('smhq_queue') || '[]');
@@ -825,7 +824,7 @@ async function gasCall(payload, isRetry = false) {
           console.error("GAS Connection Error:", err);
           resolve(handleOffline());
         })
-        .bridge(payload); // <-- Using the new bridge function instead of doPost
+        .bridge(JSON.stringify(payload)); // Safely stringified for the bridge
     });
   } 
   
