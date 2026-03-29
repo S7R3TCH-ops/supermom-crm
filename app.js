@@ -1620,7 +1620,7 @@ async function submitComplete(btn) {
     else S.financials.push({Invoice_ID:'INV'+Date.now(),Job_ID:jid,Client_ID:j.Client_ID,Amount:newTotal.toFixed(2),Status:'Pending',Payment_Method:'',Paid_Date:''});
   }
 
-  if(!S.isDemo)await gasCall({action:'markJobComplete',jobId:jid,followUp:S.followUp,notes,photos,actualHours:hrs,reqRev:S.reqRev,markPaid:S.payNow||isFullPrepay,method,additionalCost:addCost,additionalCostNotes:addCostNotes,reviewStatus:j?.Review_Status||'',paymentStatus:j?.Payment_Status||''});
+  if(!S.isDemo)await gasCall({action:'markJobComplete',jobId:jid,followUp:S.followUp,notes,photos,actualHours:hrs,reqRev:S.reqRev,markPaid:S.payNow||isFullPrepay,method,additionalCost:addCost,additionalCostNotes:addCostNotes,totalAmount:newTotal.toFixed(2),reviewStatus:j?.Review_Status||'',paymentStatus:j?.Payment_Status||''});
   const toast=isFullPrepay?'✅ Job complete — fully pre-paid':S.payNow?'✅ Done + $'+newTotal.toFixed(2)+' paid!':'✅ Job saved — payment pending';
   refreshData();showToast(toast);
   _isSaving=false;
