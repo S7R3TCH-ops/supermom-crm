@@ -1,7 +1,7 @@
 // ============================================================================
 // 1. CONSTANTS, GLOBALS & STATE
 // ============================================================================
-const APP_VERSION = '3.91';
+const APP_VERSION = '3.912';
 
 // The URL used when testing outside of Google Apps Script (e.g. GitHub)
 const GAS_URL = "https://script.google.com/macros/s/AKfycbzoqPyDDmpdgNp60xAKrXtClxqOdWxmmwgnH4sK7fM-rcM8LyPoE9Br7Lg6CtI3hCREzw/exec";
@@ -1904,8 +1904,9 @@ function saveBizConfig() {
       rate: S.biz.rate,
       hst_num: S.biz.hst_num,
       tax_rate: S.biz.tax_rate,
-      tax_enabled: S.biz.tax_enabled, 
-      logo: S.biz.logo
+      tax_enabled: S.biz.tax_enabled,
+      logo: S.biz.logo,
+      service_prices: JSON.stringify(S.biz.service_prices || {})
     });
   }
   localStorage.setItem('smhq_biz', JSON.stringify(S.biz));
