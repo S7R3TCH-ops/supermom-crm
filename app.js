@@ -1,7 +1,7 @@
 // ============================================================================
 // 1. CONSTANTS, GLOBALS & STATE
 // ============================================================================
-const APP_VERSION = '3.912';
+const APP_VERSION = '3.91';
 
 // The URL used when testing outside of Google Apps Script (e.g. GitHub)
 const GAS_URL = "https://script.google.com/macros/s/AKfycbzoqPyDDmpdgNp60xAKrXtClxqOdWxmmwgnH4sK7fM-rcM8LyPoE9Br7Lg6CtI3hCREzw/exec";
@@ -146,54 +146,30 @@ function hideLoader() { if(--_reqs <= 0) { _reqs = 0; $('global-loader').classLi
 
 async function gasCall(payload, isRetry = false) {
   showLoader();
-
-  // Helper to trap failed requests and queue them for later sync
-  const handleOffline = () => {
+  try {
+    // GET with payload as URL param — works from GAS iframe and GitHub Pages (no CORS preflight)
+    const url = GAS_URL + '?payload=' + encodeURIComponent(JSON.stringify(payload));
+    const r = await fetch(url, { method: 'GET', redirect: 'follow' });
+    const json = await r.json();
+    hideLoader();
+    if (!json.success) console.error('GAS Error:', json.error);
+    return json;
+  } catch (e) {
+    hideLoader();
+    console.error('GAS Connection Error:', e);
+    // Queue write actions for later sync when offline
     if (!isRetry && payload.action !== 'getAllData') {
-      const q = JSON.parse(localStorage.getItem('smhq_queue') || '[]');
-      q.push({ payload, timestamp: Date.now() });
-      localStorage.setItem('smhq_queue', JSON.stringify(q));
-      showToast('⚠️ Offline. Change saved locally and queued for sync.');
+      try {
+        const q = JSON.parse(localStorage.getItem('smhq_queue') || '[]');
+        q.push({ payload, timestamp: Date.now() });
+        localStorage.setItem('smhq_queue', JSON.stringify(q));
+        showToast('📴 Offline. Change queued for sync.');
+      } catch(_) {}
     }
     return { success: false, offline: true };
-  };
-
-  // 1. APPS SCRIPT ENVIRONMENT (Native & Fast)
-  if (typeof google !== 'undefined' && google.script && google.script.run) {
-    return new Promise((resolve) => {
-      google.script.run
-        .withSuccessHandler((res) => {
-          hideLoader();
-          const json = typeof res === 'string' ? JSON.parse(res) : res;
-          if (!json.success) console.error("GAS Error:", json.error);
-          resolve(json);
-        })
-        .withFailureHandler((err) => {
-          hideLoader();
-          console.error("GAS Connection Error:", err);
-          resolve(handleOffline());
-        })
-        .doPost({ parameter: { payload: JSON.stringify(payload) } }); 
-    });
-  } 
-  
-  // 2. GITHUB ENVIRONMENT (Standard Fetch)
-  else {
-    try {
-      const params = new URLSearchParams();
-      params.append('payload', JSON.stringify(payload));
-      const r = await fetch(GAS_URL, { method: 'POST', body: params });
-      const json = await r.json();
-      hideLoader();
-      if (!json.success) console.error("Fetch Error:", json.error);
-      return json;
-    } catch (e) {
-      hideLoader();
-      console.error("Fetch Connection Error:", e);
-      return handleOffline();
-    }
   }
 }
+
 
 async function loadAllData() {
   if(S.isDemo){ loadDemo(); return; }
