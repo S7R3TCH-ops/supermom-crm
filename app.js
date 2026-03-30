@@ -1,39 +1,74 @@
 // v3.95
 // 1. THE PIPE: Unlimited payload capacity, bypasses CORS preflight
 
+// --- THE HYBRID PIPE (Bypasses CORS completely) ---
 async function gasCall(payload, isRetry = false) {
   showLoader();
   try {
     let url = GAS_URL;
-    let options = {
-      method: 'POST',
-      // 'text/plain' is the "Simple Request" magic that bypasses CORS
-      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-      body: JSON.stringify(payload)
-    };
+    let options;
 
-    // Use GET for data loading to maximize speed and reliability
     if (payload.action === 'getAllData') {
-      const qs = '?payload=' + encodeURIComponent(JSON.stringify(payload));
-      url += qs;
-      options = { method: 'GET' }; 
+      // ALWAYS use GET for loading data (Fastest, zero CORS issues)
+      url += '?payload=' + encodeURIComponent(JSON.stringify(payload));
+      options = { method: 'GET' };
+    } else {
+      // ALWAYS use POST for saving (Allows unlimited text notes, bypasses CORS via text/plain)
+      options = {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify(payload)
+      };
     }
 
     const response = await fetch(url, options);
+    if (!response.ok) throw new Error('HTTP ' + response.status);
     
-    // GAS often returns a 401 or 500 if the deployment is messed up
-    if (!response.ok) throw new Error('HTTP Error: ' + response.status);
-
     const json = await response.json();
     hideLoader();
-    
-    if (json.success === false) console.error('API Logic Error:', json.error);
+    if (json.success === false) console.error('API Error:', json.error);
     return json;
   } catch (e) {
     hideLoader();
-    console.error('Connection/Parsing Error:', e);
-    return { success: false, error: e.toString(), offline: true };
+    console.error('Connection Error:', e);
+    if (!isRetry && payload.action !== 'getAllData') {
+      // Optimistic save queue
+      const q = JSON.parse(localStorage.getItem('smhq_queue') || '[]');
+      q.push({ payload, timestamp: Date.now() });
+      localStorage.setItem('smhq_queue', JSON.stringify(q));
+      showToast('📴 Saved locally (Syncing in background)');
+    }
+    return { success: false, offline: true };
   }
+}
+
+// --- THE FINANCIAL BRAIN (One Source of Truth for Math) ---
+function getJobTotals(j) {
+  const rate = parseFloat(S.biz.rate) || 50;
+  const taxRate = String(S.biz.tax_enabled).toUpperCase() === 'TRUE' ? 0.13 : 0;
+  
+  let base = 0;
+  if (j.Pricing_Type === 'Flat') {
+    base = parseMoney(j.Flat_Rate);
+  } else {
+    const hrs = parseFloat(j.Job_Status === 'Completed' ? j.Actual_Duration : j.Estimated_Hours) || 0;
+    base = hrs * rate;
+  }
+
+  const sur = parseMoney(j.Surcharge);
+  const add = parseMoney(j.Additional_Cost);
+  const sub = base + sur + add;
+  const hst = sub * taxRate;
+  const total = sub + hst;
+  
+  const paidAmt = (j.Payment_Status === 'Paid') ? total : parseMoney(j.PrePaid_Amount);
+  return { 
+    subtotal: sub, 
+    hst: hst, 
+    total: total, 
+    paid: paidAmt, 
+    balance: Math.max(0, total - paidAmt) 
+  };
 }
 
 // 2. THE BRAIN: The single source of truth for ALL money
@@ -407,38 +442,112 @@ function updNav(v) {
 // ============================================================================
 
 function renderDash() {
+  renderEarnBars();
   const tod = today();
+  const now = new Date();
 
-  // Clear categories
-  const cat = { sched: [], overdue: [], unschd: [], owed: [], done: [] };
+  // 1. Categorize jobs accurately so they never overlap
+  const cat = { today: [], upcoming: [], overdue:[], unschd: [], owed: [], done:[] };
 
   S.jobs.forEach(j => {
-    const totals = getJobTotals(j);
     if (j.Job_Status === 'Scheduled') {
-      if (!j.Scheduled_Date) cat.unschd.push(j);
-      else if (j.Scheduled_Date < tod) cat.overdue.push(j);
-      else cat.sched.push(j);
+      if (!j.Scheduled_Date) {
+        cat.unschd.push(j);
+      } else if (j.Scheduled_Date < tod) {
+        cat.overdue.push(j);
+      } else if (j.Scheduled_Date === tod) {
+        // Calculate if today's job is past its specific time
+        let isPastDue = false;
+        if(j.Time && !j.Time.includes('1899')){
+          try {
+            const [h, m] = j.Time.split(':');
+            const start = new Date(); start.setHours(parseInt(h), parseInt(m), 0, 0);
+            const hrs = parseFloat(j.Estimated_Hours || 1);
+            const end = new Date(start.getTime() + hrs * 3600000);
+            isPastDue = end < now;
+          } catch(e) {}
+        }
+        cat.today.push({...j, _pastDue: isPastDue});
+      } else {
+        cat.upcoming.push(j);
+      }
     } else if (j.Job_Status === 'Completed') {
+      const totals = getJobTotals(j); // The Brain!
       if (totals.balance > 0) cat.owed.push(j);
       else cat.done.push(j);
     }
   });
 
-  // Render Sections
-  dsec('today-jobs-list', 'view-dashboard', cat.sched.filter(j => j.Scheduled_Date === tod), 'sched');
-  dsec('d-upcoming', 'd-upcoming-sec', cat.sched.filter(j => j.Scheduled_Date > tod).slice(0, 5), 'sched');
+  // 2. Sort & Render the "Today" Card beautifully
+  cat.today.sort((a, b) => {
+    if (a._pastDue && !b._pastDue) return -1;
+    if (!a._pastDue && b._pastDue) return 1;
+    return (a.Time || '').localeCompare(b.Time || '');
+  });
+
+  if($('t-ct')) $('t-ct').textContent = cat.today.length ? cat.today.length + ' job(s) scheduled today' : 'No jobs today — enjoy your day! 🌸';
+  
+  const upNextId = cat.today.find(j => !j._pastDue)?.Job_ID || null;
+  const tjList = $('today-jobs-list');
+  if(tjList) {
+    tjList.innerHTML = cat.today.map(j => {
+      const c = getCli(j.Client_ID);
+      const pd = j._pastDue;
+      const isUpNext = !pd && j.Job_ID === upNextId;
+      return `<div class="today-job" data-action="open-job" data-jid="${esc(j.Job_ID)}" style="${pd?'border-left:3px solid var(--orange);background:rgba(192,88,0,.07);':isUpNext?'border-left:3px solid var(--pink);':''}">
+        <div class="tj-time" style="${pd?'color:var(--orange);':isUpNext?'color:var(--pink);font-weight:900;':''}">${j.Time && !j.Time.includes('1899') ? fmtT(j.Time) : 'All day'}</div>
+        <div class="tj-info">
+          <div class="tj-name">${esc(fullN(c))}${pd?` <span class="pill p-ora" style="font-size:9px;">⚠️ Past Due</span>`:isUpNext?` <span class="pill p-pink" style="font-size:9px;">⚡ Up Next</span>`:''}</div>
+          <div class="tj-svc">${esc(j.Service)}</div>
+        </div>
+        <button class="btn b-sm b-p" data-action="complete" data-jid="${esc(j.Job_ID)}">✅ Done</button>
+      </div>`;
+    }).join('');
+  }
+
+  // 3. Sort & Render the normal lists
+  cat.upcoming.sort((a, b) => (a.Scheduled_Date || '').localeCompare(b.Scheduled_Date || ''));
+  cat.overdue.sort((a, b) => (a.Scheduled_Date || '').localeCompare(b.Scheduled_Date || ''));
+  cat.done.sort((a, b) => (b.Completion_Date || '').localeCompare(a.Completion_Date || ''));
+
+  dsec('d-upcoming', 'd-upcoming-sec', cat.upcoming.slice(0, 5), 'sched');
   dsec('d-overdue', 'd-overdue-sec', cat.overdue, 'overdue');
   dsec('d-unschd', 'd-unschd-sec', cat.unschd, 'unschd');
   dsec('d-owed', 'd-owed-sec', cat.owed, 'owed');
-  dsec('d-arc', 'd-arc-sec', cat.done.sort((a,b) => b.Completion_Date.localeCompare(a.Completion_Date)).slice(0,3), 'paid');
+  dsec('d-arc', 'd-arc-sec', cat.done.slice(0, 3), 'paid');
 
-  // Fast Summary Update
+  // 4. Update Money Summary
   let totalOwed = 0;
   cat.owed.forEach(j => totalOwed += getJobTotals(j).balance);
-  $('m-owed').textContent = '$' + totalOwed.toFixed(2);
   
-  // Persistence
-  localStorage.setItem('smhq_cache', JSON.stringify({clients: S.clients, jobs: S.jobs, financials: S.financials, lists: S.lists}));
+  const thisMonth = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0');
+  const allPaid = S.financials.filter(f => f.Status === 'Paid');
+  const displayPaid = S.moneyFilter === 'month' ? allPaid.filter(f => String(f.Paid_Date).startsWith(thisMonth)) : allPaid;
+  
+  if($('m-owed')) $('m-owed').textContent = '$' + totalOwed.toFixed(2);
+  if($('m-owed-s')) $('m-owed-s').textContent = cat.owed.length + ' unpaid';
+  if($('m-paid')) $('m-paid').textContent = '$' + displayPaid.reduce((sum, f) => sum + parseMoney(f.Amount), 0).toFixed(2);
+  if($('m-paid-s')) $('m-paid-s').textContent = displayPaid.length + (S.moneyFilter === 'month' ? ' this month' : ' total');
+
+  // 5. Render Leads
+  const leads = S.clients.filter(c => c.Status === 'Lead');
+  if(!leads.length) {
+    if($('d-lead-sec')) $('d-lead-sec').style.display = 'none';
+  } else {
+    if($('d-lead-sec')) $('d-lead-sec').style.display = '';
+    if($('d-lead')) $('d-lead').innerHTML = leads.map(c => `
+      <div class="jr lead">
+        <div class="ji">🟡</div>
+        <div class="jd" data-action="open-profile" data-cid="${esc(c.Client_ID)}" style="cursor:pointer;">
+          <div class="jn">${esc(fullN(c))}</div>
+          <div class="jm">${esc(c.Phone || 'No phone')} · ${esc(c.Referral_Source || '—')}</div>
+        </div>
+        <button class="btn b-sm b-p" data-action="booklead" data-cid="${esc(c.Client_ID)}">📅 Book</button>
+      </div>`).join('');
+  }
+
+  // 6. Update cache so state persists instantly on refresh
+  localStorage.setItem('smhq_cache', JSON.stringify({clients:S.clients, jobs:S.jobs, financials:S.financials, lists:S.lists}));
 }
 
 function setMoneyFilter(f) { S.moneyFilter=f; renderDash(); }
