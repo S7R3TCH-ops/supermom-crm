@@ -1080,6 +1080,7 @@ function setPrice(t) {
 
 // Centralized calculation for the Book Job screen
 function calc() {
+  // Use the Brain!
   const mockJob = {
     Pricing_Type: S.priceType,
     Estimated_Hours: $('bj-hrs')?.value,
@@ -1090,9 +1091,20 @@ function calc() {
   };
   const totals = getJobTotals(mockJob);
   
-  if($('c-base')) $('c-base').textContent = '$' + totals.subtotal.toFixed(2);
-  if($('c-sur')) $('c-sur').textContent = '$' + parseMoney($('bj-sur')?.value).toFixed(2);
-  if($('c-hst')) $('c-hst').textContent = '$' + totals.hst.toFixed(2);
+  if($('c-base')) $('c-base').textContent = '$' + (totals.subtotal - parseMoney(mockJob.Surcharge)).toFixed(2);
+  if($('c-sur')) $('c-sur').textContent = '$' + parseMoney(mockJob.Surcharge).toFixed(2);
+  
+  const hstRow = $('c-hst')?.closest('.pr');
+  if (hstRow) {
+    if (totals.hst === 0) {
+      hstRow.style.display = 'none';
+    } else {
+      hstRow.style.display = 'flex';
+      $('c-hst').textContent = '$' + totals.hst.toFixed(2);
+      const taxPct = Math.round((String(S.biz.tax_enabled).toUpperCase() === 'TRUE' ? 0.13 : 0) * 100);
+      hstRow.querySelector('span').textContent = `HST (${taxPct}%)`;
+    }
+  }
   if($('c-tot')) $('c-tot').textContent = '$' + totals.total.toFixed(2);
 }
 
