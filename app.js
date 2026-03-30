@@ -1,37 +1,41 @@
 // v3.95
 // 1. THE PIPE: Unlimited payload capacity, bypasses CORS preflight
+
 async function gasCall(payload, isRetry = false) {
   showLoader();
   try {
     let url = GAS_URL;
     let options = {
       method: 'POST',
-      // We use 'text/plain' to keep it a "Simple Request" and bypass CORS preflight
+      // 'text/plain' is the "Simple Request" magic that bypasses CORS
       headers: { 'Content-Type': 'text/plain;charset=utf-8' },
       body: JSON.stringify(payload)
     };
 
-    // If we are just getting data, use GET (it's more reliable for initial loads)
+    // Use GET for data loading to maximize speed and reliability
     if (payload.action === 'getAllData') {
-      url += '?payload=' + encodeURIComponent(JSON.stringify(payload));
-      options = { method: 'GET' };
+      const qs = '?payload=' + encodeURIComponent(JSON.stringify(payload));
+      url += qs;
+      options = { method: 'GET' }; 
     }
 
     const response = await fetch(url, options);
-    const json = await response.json();
     
+    // GAS often returns a 401 or 500 if the deployment is messed up
+    if (!response.ok) throw new Error('HTTP Error: ' + response.status);
+
+    const json = await response.json();
     hideLoader();
+    
+    if (json.success === false) console.error('API Logic Error:', json.error);
     return json;
   } catch (e) {
     hideLoader();
-    console.error('GAS Connection Error:', e);
-    // If it's a save action, we don't want the user to get stuck
-    if (!isRetry && payload.action !== 'getAllData') {
-      showToast('📴 Saved locally (Will sync later)');
-    }
-    return { success: false, offline: true };
+    console.error('Connection/Parsing Error:', e);
+    return { success: false, error: e.toString(), offline: true };
   }
 }
+
 // 2. THE BRAIN: The single source of truth for ALL money
 function getJobTotals(j) {
   const rate = parseFloat(S.biz.rate) || 50;
@@ -202,31 +206,27 @@ function dsec(lid, sid, jobs, type) {
 function showLoader() { if(_reqs++ === 0) $('global-loader').classList.add('show'); }
 function hideLoader() { if(--_reqs <= 0) { _reqs = 0; $('global-loader').classList.remove('show'); } }
 
-
-
-
 async function loadAllData() {
-  if(S.isDemo){ loadDemo(); return; }
-  try {
-    const cached = localStorage.getItem('smhq_cache');
-    if(cached){
-      const p = JSON.parse(cached);
-      S.clients=p.clients; S.jobs=p.jobs; S.financials=p.financials; S.lists=p.lists;
-      refreshAll();
-    }
-  } catch(e){}
-  
-  const r = gasCall({ action: 'getAllData' }); 
-  if(r.success){
-    S.clients = (r.clients || []).filter(c => !_pendingDeletes.clients.has(c.Client_ID));
-    S.jobs = (r.jobs || []).filter(j => !_pendingDeletes.jobs.has(j.Job_ID));
-    S.financials = r.financials || []; 
-    S.lists = r.lists || S.lists;
-    if(r.biz) S.biz = Object.assign(S.biz, r.biz);
-    
-    updateHeaderBrand();
+  // 1. Load from cache immediately so the Bugatti is "ready to drive"
+  const cached = localStorage.getItem('smhq_cache');
+  if (cached) {
+    const p = JSON.parse(cached);
+    S.clients = p.clients || [];
+    S.jobs = p.jobs || [];
     refreshAll();
-    localStorage.setItem('smhq_cache', JSON.stringify({clients:S.clients, jobs:S.jobs, financials:S.financials, lists:S.lists}));
+  }
+
+  // 2. Fetch fresh data from Cloud
+  const r = await gasCall({ action: 'getAllData' }); 
+  if (r.success) {
+    S.clients = r.clients || [];
+    S.jobs = r.jobs || [];
+    S.biz = Object.assign(S.biz, r.biz);
+    refreshAll();
+    // Update cache
+    localStorage.setItem('smhq_cache', JSON.stringify({clients: S.clients, jobs: S.jobs, biz: S.biz}));
+  } else {
+    showToast('⚠️ Cloud Sync Failed: ' + (r.error || 'Check Console'));
   }
 }
 
