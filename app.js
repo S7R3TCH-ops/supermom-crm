@@ -41,28 +41,9 @@ async function gasCall(payload, isRetry = false) {
 // ── THE FINANCIAL BRAIN ───────────────────────────────────────────────────────
 // Single source of truth for all money math. Call getJobTotals(j) everywhere.
 // FIX: Removed duplicate definition that existed above this in v3.95
-function getJobTotals(j) {
-  const rate    = parseFloat(S.biz.rate) || 50;
-  const taxRate = String(S.biz.tax_enabled).toUpperCase() === 'TRUE' ? 0.13 : 0;
 
-  let base = (j.Pricing_Type === 'Flat')
-    ? parseMoney(j.Flat_Rate)
-    : (parseFloat(j.Job_Status === 'Completed' ? j.Actual_Duration : j.Estimated_Hours) || 0) * rate;
 
-  const sub   = base + parseMoney(j.Surcharge) + parseMoney(j.Additional_Cost);
-  const hst   = sub * taxRate;
-  const total = sub + hst;
 
-  // Paid = full total if Payment_Status is Paid, otherwise subtract any pre-pay deposit
-  const paid = (j.Payment_Status === 'Paid') ? total : parseMoney(j.PrePaid_Amount);
-  return {
-    subtotal: sub,
-    hst:      hst,
-    total:    total,
-    paid:     paid,
-    balance:  Math.max(0, total - paid)
-  };
-}
 
 // ============================================================================
 // 1. CONSTANTS, GLOBALS & STATE
@@ -520,12 +501,7 @@ function renderDash() {
   }));
 }
 
-function setMoneyFilter(f) {
-  S.moneyFilter=f;
-  $('mf-month')?.classList.toggle('on', f==='month');
-  $('mf-all')?.classList.toggle('on',   f==='all');
-  renderDash();
-}
+function setMoneyFilter(f) { S.moneyFilter=f; renderDash(); }
 function showAllSched()     { S.showAllSched=true; renderDash(); }
 function showAllArchived()  { S.showAllArc=true; renderDash(); }
 
@@ -846,15 +822,16 @@ async function submitClient(thenBook=false) {
     refreshData();
     goBack();
   } else {
-    // Duplicate check
-    const phone=String(data.Phone||'').replace(/\D/g,'');
-    const dup=S.clients.find(c=>{
-      if (c.Last_Name&&data.Last_Name&&c.Last_Name.toLowerCase()===data.Last_Name.toLowerCase()) return true;
-      if (phone&&c.Phone&&String(c.Phone||'').replace(/\D/g,'')===phone) return true;
-      if (data.Email&&c.Email&&c.Email.toLowerCase()===data.Email.toLowerCase()) return true;
-      if (data.Street&&c.Street&&data.Street.toLowerCase()===c.Street.toLowerCase()) return true;
+    // Duplicate check - Bulletproofed for Sheets Data Types
+    const phone = String(data.Phone || '').replace(/\D/g, '');
+    const dup = S.clients.find(c => {
+      if (c.Last_Name && data.Last_Name && String(c.Last_Name).toLowerCase() === String(data.Last_Name).toLowerCase()) return true;
+      if (phone && c.Phone && String(c.Phone).replace(/\D/g, '') === phone) return true;
+      if (data.Email && c.Email && String(c.Email).toLowerCase() === String(data.Email).toLowerCase()) return true;
+      if (data.Street && c.Street && String(c.Street).toLowerCase() === String(data.Street).toLowerCase()) return true;
       return false;
     });
+
     if (dup) {
       _isSaving=false;
       if (btn) { btn.disabled=false; btn.textContent=origText; btn.classList.remove('saving'); }
@@ -1075,10 +1052,12 @@ function calc() {
 }
 
 // Calculation for the Completion screen
+// Calculation for the Completion screen
 function calcJobTotal() {
   const j=getJob(S.jobModal);
   const mockJob={
     ...j,
+    Total_Amount: 0, // <--- CRITICAL FIX: Forces the Brain to recalculate live based on what you are typing
     Actual_Duration: $('cp-hrs')?.value,
     Additional_Cost: $('cp-addcost')?.value,
     Surcharge:       j.Surcharge,
@@ -1401,18 +1380,28 @@ async function submitJobEdit(btn, markPaid=false) {
   }
 }
 
-function deleteJob() {
-  const jid=S.jobModal; if(!jid) return;
-  closeMo('m-del'); closeMo('m-job');
-  _pendingDeletes.jobs.add(jid);
-  S.jobs       = S.jobs.filter(x=>x.Job_ID!==jid);
-  S.financials = S.financials.filter(x=>x.Job_ID!==jid);
-  showToast('🗑️ Deleting job...');
-  if (S.view==='dashboard') renderDash();
-  else if (S.view==='profile') renderProfileJobs();
+async function deleteJob() {
+  const jid = S.jobModal;
+  if (!jid) return;
+
+  closeMo('m-del');
+  closeMo('m-job');
+
+  // 1. Instant UI update
+  S.jobs = S.jobs.filter(x => String(x.Job_ID) !== String(jid));
+  S.financials = S.financials.filter(x => String(x.Job_ID) !== String(jid));
+  
+  showToast('🗑️ Deleting from Cloud...');
+  renderDash();
+
+  // 2. Clear cache so the ghost doesn't come back on a failed refresh
+  localStorage.removeItem('smhq_cache');
+
+  // 3. Inform the server
   if (!S.isDemo) {
-    gasCall({action:'deleteJob',jobId:jid});
-    try { localStorage.removeItem('smhq_cache'); } catch(e) {}
+    await gasCall({ action: 'deleteJob', jobId: jid });
+    // 4. Force a fresh pull from the server to sync the "Real" state
+    loadAllData();
   }
 }
 
