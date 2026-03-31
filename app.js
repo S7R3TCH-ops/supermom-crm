@@ -1,7 +1,7 @@
 // ============================================================================
-// SUPERMOM FOR HIRE — CRM v5.1 (Bugatti Edition) AI STUDIO MAR 31
+// SUPERMOM FOR HIRE — CRM v5.1 (Incremental Baseline)
 // ============================================================================
-const APP_VERSION = '6.0';
+const APP_VERSION = '5.1';
 const GAS_URL = "https://script.google.com/macros/s/AKfycbzoqPyDDmpdgNp60xAKrXtClxqOdWxmmwgnH4sK7fM-rcM8LyPoE9Br7Lg6CtI3hCREzw/exec";
 
 const DL = {
@@ -153,7 +153,7 @@ function refreshData() { if (S.view === 'dashboard') renderDash(); else if (S.vi
 // ── DASHBOARD ────────────────────────────────────────────────────────────────
 function renderDash() {
   renderEarnBars();
-  const tod = today(), now = new Date();
+  const tod = today();
   const cat = { today: [], upcoming: [], overdue: [], unschd: [], owed: [], done: [] };
 
   S.jobs.forEach(j => {
@@ -221,7 +221,8 @@ async function submitClient(thenBook = false) {
     City: $('ac-city').value.trim(),
     Status: S.cliStatus,
     Global_Notes: $('ac-notes').value.trim(),
-    Created_Date: today()
+    Created_Date: today(),
+    Is_Deleted: 'FALSE'
   };
   if (!S.editCli) S.clients.push(data); else Object.assign(S.clients.find(c => c.Client_ID === S.editCli), data);
   showToast('✓ Client Saved');
@@ -232,8 +233,8 @@ async function submitClient(thenBook = false) {
 
 function openProfile(cid) {
   S.curCli = cid; const c = getCli(cid); const cj = S.jobs.filter(j => j.Client_ID === cid);
-  $('p-name').textContent = fullN(c);
-  $('p-jobs').textContent = cj.length;
+  if ($('p-name')) $('p-name').textContent = fullN(c);
+  if ($('p-jobs')) $('p-jobs').textContent = cj.length;
   renderProfileJobs(cj);
   navTo('profile', true);
 }
@@ -242,7 +243,7 @@ function openProfile(cid) {
 function calc() {
   const mockJob = { Pricing_Type: S.priceType, Estimated_Hours: $('bj-hrs')?.value, Flat_Rate: $('bj-flat')?.value, Surcharge: $('bj-sur')?.value };
   const t = getJobTotals(mockJob);
-  if ($('c-base')) $('c-base').textContent = '$' + t.subtotal.toFixed(2);
+  if ($('c-base')) $('c-base').textContent = '$' + (t.subtotal - parseMoney(mockJob.Surcharge)).toFixed(2);
   if ($('c-tot')) $('c-tot').textContent = '$' + t.total.toFixed(2);
 }
 
@@ -254,7 +255,7 @@ function submitJob() {
     Time: $('bj-time').value, Pricing_Type: S.priceType, Estimated_Hours: $('bj-hrs').value,
     Flat_Rate: $('bj-flat').value, Surcharge: $('bj-sur').value, Subtotal: totals.subtotal.toFixed(2),
     HST_Rate: totals.hstRate, HST_Amount: totals.hstAmount.toFixed(2), Total_Amount: totals.total.toFixed(2),
-    Job_Status: 'Scheduled', Payment_Status: 'Unpaid', Created_Date: today()
+    Job_Status: 'Scheduled', Payment_Status: 'Unpaid', Created_Date: today(), Is_Deleted: 'FALSE'
   };
   S.jobs.push(jobData); renderDash(); goBack();
   gasCall({ action: 'addJob', ...jobData });
@@ -263,7 +264,7 @@ function submitJob() {
 function openCompleteModal(jid) {
   S.jobModal = jid; S.payNow = false;
   const j = getJob(jid); const c = getCli(j.Client_ID);
-  $('m-comp-t').textContent = '✅ Complete: ' + fullN(c);
+  if ($('m-comp-t')) $('m-comp-t').textContent = '✅ Complete: ' + fullN(c);
   calcJobTotal();
   showMo('m-comp');
 }
@@ -296,26 +297,49 @@ async function submitComplete() {
   gasCall({ action: 'markJobComplete', jobId: j.Job_ID, actualHours: j.Actual_Duration, totalAmount: j.Total_Amount, markPaid: S.payNow, subtotal: t.subtotal.toFixed(2), hstAmount: t.hstAmount.toFixed(2), hstRate: t.hstRate });
 }
 
-// ── CORE NAV & INIT ──────────────────────────────────────────────────────────
+// ── UI HELPERS ───────────────────────────────────────────────────────────────
+function popLists() {
+  const ref = $('ac-ref'); if(ref) { ref.innerHTML = ''; gl('referral_sources').forEach(v => { const o = document.createElement('option'); o.value=v; o.textContent=v; ref.appendChild(o); }); }
+  const svc = $('bj-svc'); if(svc) { svc.innerHTML = ''; gl('services').forEach(v => { const o = document.createElement('option'); o.value=v; o.textContent=v; svc.appendChild(o); }); }
+}
+function popCliDrop() {
+  const sel = $('bj-cli'); if(!sel) return;
+  sel.innerHTML = '<option value="">— Select client —</option>';
+  [...S.clients].sort((a,b)=>fullN(a).localeCompare(fullN(b))).forEach(c => {
+    const o = document.createElement('option'); o.value=c.Client_ID; o.textContent=fullN(c); sel.appendChild(o);
+  });
+}
+function renderAdmin() {
+  const el = $('admin-lists'); if(!el) return;
+  const listKeys = [{k:'services',l:'Services'},{k:'referral_sources',l:'Referral Sources'},{k:'payment_methods',l:'Payment Methods'}];
+  el.innerHTML = listKeys.map(({k,l}) => `<div class="card"><div class="slbl">${l}</div>${gl(k).map(item=>`<div class="li-row"><span class="li-lbl">${esc(item)}</span></div>`).join('')}</div>`).join('');
+}
+function renderSvcPrices() {
+  const el = $('svc-price-list'); if(!el) return;
+  el.innerHTML = gl('services').map(s => `<div class="li-row"><span class="li-lbl">${esc(s)}</span></div>`).join('');
+}
+function updateHeaderBrand() {
+  const logo = $('brand-logo'), name = $('brand-name-txt');
+  if(S.biz.logo && S.biz.logo !== GLOBAL_LOGO) { logo.src = S.biz.logo; logo.classList.remove('hidden'); name.style.display='none'; }
+  else { logo.classList.add('hidden'); name.style.display=''; }
+}
+function renderEarnBars() { /* Chart logic placeholder for v5.2 */ }
+
+// ── CORE NAV ─────────────────────────────────────────────────────────────────
 function navTo(v, push=false) {
   if (push) S.stack.push(S.view); else S.stack = [];
   document.querySelectorAll('.view').forEach(el => el.classList.remove('active'));
-  document.getElementById('view-' + v).classList.add('active');
+  const target = document.getElementById('view-' + v);
+  if(target) target.classList.add('active');
   S.view = v; updHeader(v);
 }
 function goBack() { if (S.stack.length) navTo(S.stack.pop()); else navTo('dashboard'); }
-function updHeader(v) { $('hbk').classList.toggle('hidden', v === 'dashboard'); }
-function setMoneyFilter(f) { S.moneyFilter = f; renderDash(); }
-function setPrice(t) { S.priceType = t; $('bj-hrs-g').style.display = t === 'Hourly' ? '' : 'none'; $('bj-flat-g').style.display = t === 'Flat' ? '' : 'none'; calc(); }
-function setSched(t) { S.schedType = t; calc(); }
-function popLists() { /* logic to fill selects from S.lists */ }
-function popCliDrop() { /* logic to fill client select */ }
-function renderAdmin() { /* logic for admin screen */ }
-function renderSvcPrices() { /* logic for pricing screen */ }
-function updateHeaderBrand() { /* logic for logo */ }
-function renderEarnBars() { /* logic for charts */ }
-function jrHTML(j, type) { return `<div class="jr ${type}" data-action="open-job" data-jid="${esc(j.Job_ID)}"><div class="jd"><div class="jn">${esc(fullN(getCli(j.Client_ID)))}</div><div class="jm">${esc(j.Service)}</div></div><div class="ja">$${parseMoney(j.Total_Amount).toFixed(2)}</div></div>`; }
-function renderProfileJobs(cj) { $('p-jobs-list').innerHTML = cj.map(j => jrHTML(j, 'sched')).join(''); }
+function updHeader(v) { if($('hbk')) $('hbk').classList.toggle('hidden', v === 'dashboard'); }
+
+function jrHTML(j, type) { 
+  return `<div class="jr ${type}" data-action="open-job" data-jid="${esc(j.Job_ID)}"><div class="jd"><div class="jn">${esc(fullN(getCli(j.Client_ID)))}</div><div class="jm">${esc(j.Service)}</div></div><div class="ja">$${parseMoney(j.Total_Amount).toFixed(2)}</div></div>`; 
+}
+function renderProfileJobs(cj) { if($('p-jobs-list')) $('p-jobs-list').innerHTML = cj.map(j => jrHTML(j, 'sched')).join(''); }
 
 window.addEventListener('DOMContentLoaded', () => {
   loadAllData();
@@ -328,4 +352,3 @@ window.addEventListener('DOMContentLoaded', () => {
     if (action === 'open-job') openJobModal(jid);
   });
 });
-// ── END OF FILE ──────────────────────────────────────────────────────────────
