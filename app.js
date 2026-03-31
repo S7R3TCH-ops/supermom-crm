@@ -38,14 +38,7 @@ async function gasCall(payload, isRetry = false) {
   }
 }
 
-// ── THE FINANCIAL BRAIN ───────────────────────────────────────────────────────
-// Single source of truth for all money math. Call getJobTotals(j) everywhere.
-// FIX: Removed duplicate definition that existed above this in v3.95
-
-
-
-
-// ============================================================================
+/ ============================================================================
 // 1. CONSTANTS, GLOBALS & STATE
 // ============================================================================
 const APP_VERSION = '4.0';
@@ -1093,46 +1086,51 @@ function checkTimeConflict() {
 }
 
 function submitJob() {
-  const cid=$('bj-cli')?.value;
+  const cid = $('bj-cli')?.value;
   if (!cid) return showToast('⚠️ Select a client');
 
-  // FIX: compute Total_Amount at booking time so it's not blank everywhere until edited
-  const mockJob={
-    Pricing_Type:    S.priceType,
-    Estimated_Hours: $('bj-hrs')?.value || '2',
-    Flat_Rate:       $('bj-flat')?.value || '0',
-    Surcharge:       $('bj-sur')?.value  || '0',
+  // Calculate full financials for the database
+  const mockJob = {
+    Pricing_Type: S.priceType,
+    Estimated_Hours: $('bj-hrs')?.value || '0',
+    Flat_Rate: $('bj-flat')?.value || '0',
+    Surcharge: $('bj-sur')?.value || '0',
     Additional_Cost: 0,
-    Job_Status:      'Scheduled'
+    Job_Status: 'Scheduled'
   };
-  const totals=getJobTotals(mockJob);
+  const totals = getJobTotals(mockJob);
 
-  const jobData={
-    Job_ID:           'J'+Date.now(),
+  const jobData = {
+    Job_ID:           'J' + Date.now(),
     Client_ID:        cid,
     Service:          $('bj-svc')?.value || '',
-    Scheduled_Date:   S.schedType==='asap' ? '' : $('bj-date')?.value,
-    Scheduling_Type:  S.schedType==='asap' ? 'ASAP' : 'Scheduled',  // FIX: was never saved
+    Scheduled_Date:   S.schedType === 'asap' ? '' : $('bj-date')?.value,
     Time:             $('bj-time')?.value || '09:00',
+    Scheduling_Type:  S.schedType === 'asap' ? 'ASAP' : 'Hard Date',
     Pricing_Type:     S.priceType,
-    Estimated_Hours:  $('bj-hrs')?.value  || '2',
+    Estimated_Hours:  $('bj-hrs')?.value || '0',
     Flat_Rate:        $('bj-flat')?.value || '0',
-    Surcharge:        $('bj-sur')?.value  || '0',
-    Total_Amount:     totals.total.toFixed(2),                        // FIX: was never saved
+    Surcharge:        $('bj-sur')?.value || '0',
+    Hourly_Rate:      S.biz.rate,             // RECORDING AGAIN
+    HST_Rate:         taxRate(),              // RECORDING AGAIN
+    HST_Amount:       totals.hst.toFixed(2),  // RECORDING AGAIN
+    Subtotal:         totals.subtotal.toFixed(2), // RECORDING AGAIN
+    Total_Amount:     totals.total.toFixed(2),
     Job_Status:       'Scheduled',
     Payment_Status:   'Unpaid',
     Job_Notes:        $('bj-notes')?.value.trim() || '',
-    Created_Date:     today()
+    Created_Date:     today(),
+    Is_Deleted:       'FALSE'
   };
 
+  // Instant UI update
   S.jobs.push(jobData);
-  localStorage.setItem('smhq_cache',JSON.stringify({clients:S.clients,jobs:S.jobs,financials:S.financials,lists:S.lists,biz:S.biz}));
-
+  renderDash();
   showToast('📅 Job Booked!');
-  if (S.stack.includes('profile')) { goBack(); openProfile(cid); }
-  else { navTo('dashboard'); }
+  navTo('dashboard');
 
-  gasCall({action:'addJob', ...jobData});
+  // Background Sync
+  gasCall({ action: 'addJob', ...jobData });
 }
 
 function openJobModal(jid) {
@@ -1594,87 +1592,54 @@ function setRev(v) { S.reqRev=v; $('rev-y')?.classList.toggle('on',v); $('rev-n'
 function setPayNow(v) { S.payNow=v; calcJobTotal(); }
 
 async function submitComplete(btn) {
-  if (_isSaving) return;
-  _isSaving=true;
-  const origText=btn?btn.textContent:'';
-  if (btn&&btn.tagName==='BUTTON') { btn.disabled=true; btn.textContent='Saving...'; }
-  if (btn) btn.classList.add('saving');
+  if(_isSaving) return; _isSaving = true;
 
-  const jid=S.jobModal;
-  const j0=getJob(jid);
-  const hrs           = $('cp-hrs')?.value||'';
-  const notes         = $('cp-notes')?.value.trim()||'';
-  const photos        = $('cp-photos')?.value.trim()||'';
-  const method        = $('cp-pm')?.value||$('cp-pm-g')?.querySelector('select')?.value||'Cash';
-  const addCost       = parseFloat($('cp-addcost')?.value)||0;
-  const addCostNotes  = $('cp-addcost-notes')?.value.trim()||'';
+  const jid = S.jobModal;
+  const j = S.jobs.find(x => x.Job_ID === jid);
+  if(!j) return;
 
-  const rate        = parseFloat(j0.Hourly_Rate||0)||hourlyRate();
-  const surcharge   = parseMoney(j0.Surcharge);
-  const prePaidAmt  = parseMoney(j0.PrePaid_Amount);
-  const isFullPrepay = j0.Payment_Status==='Paid';
-  const isPartialPre = j0.Payment_Status==='Partial';
+  const mockJob = {
+    ...j,
+    Total_Amount: 0, // Force recalc
+    Actual_Duration: $('cp-hrs')?.value,
+    Additional_Cost: $('cp-addcost')?.value,
+    Job_Status: 'Completed'
+  };
+  const totals = getJobTotals(mockJob);
 
-  let labourAmt=0;
-  if (j0.Pricing_Type==='Hourly') {
-    const hrsNum=parseFloat(hrs)||parseFloat(j0.Estimated_Hours||0);
-    labourAmt=hrsNum*rate;
-  } else {
-    labourAmt=parseMoney(j0.Flat_Rate)||parseMoney(j0.Subtotal)||(parseMoney(j0.Total_Amount)/(1+taxRate()));
-  }
-  const subtotal  = labourAmt+surcharge+addCost;
-  const hst       = subtotal*taxRate();
-  const newTotal  = subtotal+hst;
-  const remaining = isPartialPre ? Math.max(0,newTotal-prePaidAmt) : newTotal;
-
-  closeMo('m-comp');
-  const j=S.jobs.find(x=>x.Job_ID===jid);
-  if (j) {
-    j.Job_Status='Completed'; j.Completion_Date=today();
-    j.Actual_Duration=hrs; j.Completion_Notes=notes; j.Photo_Links=photos; j.Follow_Up=S.followUp;
-    if (S.reqRev) j.Review_Status='Pending';
-    j.Total_Amount=newTotal.toFixed(2);
-    if (addCost>0) { j.Additional_Cost=String(addCost); j.Additional_Cost_Notes=addCostNotes; }
-    if (S.payNow||isFullPrepay) { j.Payment_Status='Paid'; if(method) j.Payment_Method=method; }
-  }
-
-  const tod=today(); const inv=S.financials.find(f=>f.Job_ID===jid);
-  if (isFullPrepay) {
-    if (inv) inv.Amount=newTotal.toFixed(2);
-  } else if (S.payNow&&isPartialPre) {
-    S.financials.push({Invoice_ID:'INV'+Date.now(),Job_ID:jid,Client_ID:j.Client_ID,Amount:remaining.toFixed(2),Status:'Paid',Payment_Method:method,Paid_Date:tod});
-    if (inv) inv.Amount=j.PrePaid_Amount;
-  } else if (S.payNow) {
-    if (inv) { inv.Status='Paid'; inv.Payment_Method=method; inv.Paid_Date=tod; inv.Amount=newTotal.toFixed(2); }
-    else S.financials.push({Invoice_ID:'INV'+Date.now(),Job_ID:jid,Client_ID:j.Client_ID,Amount:newTotal.toFixed(2),Status:'Paid',Payment_Method:method,Paid_Date:tod});
-  } else {
-    if (inv) inv.Amount=newTotal.toFixed(2);
-    else S.financials.push({Invoice_ID:'INV'+Date.now(),Job_ID:jid,Client_ID:j.Client_ID,Amount:newTotal.toFixed(2),Status:'Pending',Payment_Method:'',Paid_Date:''});
-  }
-
-  if (!S.isDemo) gasCall({
-    action:            'markJobComplete',
-    jobId:             jid,
-    followUp:          S.followUp,
-    notes, photos,
-    actualHours:       hrs,
-    reqRev:            S.reqRev,
-    // FIX: don't send markPaid=true for already-pre-paid jobs — they already have a payment record
-    markPaid:          S.payNow && !isFullPrepay,
-    method,
-    additionalCost:    addCost,
-    additionalCostNotes: addCostNotes,
-    totalAmount:       newTotal.toFixed(2),
-    reviewStatus:      j?.Review_Status||'',
-    paymentStatus:     j?.Payment_Status||''
+  // Update local memory with the FULL record
+  Object.assign(j, {
+    Job_Status:            'Completed',
+    Completion_Date:       today(),
+    Actual_Duration:       $('cp-hrs')?.value,
+    Completion_Notes:      $('cp-notes')?.value.trim(),
+    Photo_Links:           $('cp-photos')?.value.trim(),
+    Follow_Up:             S.followUp,
+    Additional_Cost:       $('cp-addcost')?.value || '0',
+    Additional_Cost_Notes: $('cp-addcost-notes')?.value.trim(),
+    Subtotal:              totals.subtotal.toFixed(2), // FINAL SUB
+    HST_Amount:            totals.hst.toFixed(2),      // FINAL HST
+    Total_Amount:          totals.total.toFixed(2)
   });
 
-  const toast = isFullPrepay ? '✅ Job complete — fully pre-paid' :
-                S.payNow    ? '✅ Done + $'+newTotal.toFixed(2)+' paid!' :
-                              '✅ Job saved — payment pending';
-  refreshData();
-  showToast(toast);
-  _isSaving=false;
+  if (S.payNow) {
+    j.Payment_Status = 'Paid';
+    j.Payment_Method = $('cp-pm')?.value || 'Cash';
+  }
+
+  closeMo('m-comp');
+  renderDash();
+
+  // Inform backend - passing the full object ensures all columns update
+  gasCall({
+    action: 'markJobComplete',
+    jobId: jid,
+    ...j, // Sends the entire updated job object
+    markPaid: S.payNow,
+    method: j.Payment_Method
+  });
+
+  _isSaving = false;
 }
 
 function openPaidModal(jid) {
