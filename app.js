@@ -520,7 +520,12 @@ function renderDash() {
   }));
 }
 
-function setMoneyFilter(f) { S.moneyFilter=f; renderDash(); }
+function setMoneyFilter(f) {
+  S.moneyFilter=f;
+  $('mf-month')?.classList.toggle('on', f==='month');
+  $('mf-all')?.classList.toggle('on',   f==='all');
+  renderDash();
+}
 function showAllSched()     { S.showAllSched=true; renderDash(); }
 function showAllArchived()  { S.showAllArc=true; renderDash(); }
 
@@ -841,16 +846,15 @@ async function submitClient(thenBook=false) {
     refreshData();
     goBack();
   } else {
-    // Duplicate check - Bulletproofed for Sheets Data Types
-    const phone = String(data.Phone || '').replace(/\D/g, '');
-    const dup = S.clients.find(c => {
-      if (c.Last_Name && data.Last_Name && String(c.Last_Name).toLowerCase() === String(data.Last_Name).toLowerCase()) return true;
-      if (phone && c.Phone && String(c.Phone).replace(/\D/g, '') === phone) return true;
-      if (data.Email && c.Email && String(c.Email).toLowerCase() === String(data.Email).toLowerCase()) return true;
-      if (data.Street && c.Street && String(c.Street).toLowerCase() === String(data.Street).toLowerCase()) return true;
+    // Duplicate check
+    const phone=String(data.Phone||'').replace(/\D/g,'');
+    const dup=S.clients.find(c=>{
+      if (c.Last_Name&&data.Last_Name&&c.Last_Name.toLowerCase()===data.Last_Name.toLowerCase()) return true;
+      if (phone&&c.Phone&&String(c.Phone||'').replace(/\D/g,'')===phone) return true;
+      if (data.Email&&c.Email&&c.Email.toLowerCase()===data.Email.toLowerCase()) return true;
+      if (data.Street&&c.Street&&data.Street.toLowerCase()===c.Street.toLowerCase()) return true;
       return false;
     });
-
     if (dup) {
       _isSaving=false;
       if (btn) { btn.disabled=false; btn.textContent=origText; btn.classList.remove('saving'); }
