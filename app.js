@@ -791,7 +791,7 @@ async function submitClient(thenBook=false) {
     const phone=data.Phone.replace(/\D/g,'');
     const dup=S.clients.find(c=>{
       if(c.Last_Name&&data.Last_Name&&c.Last_Name.toLowerCase()===data.Last_Name.toLowerCase())return true;
-      if(phone&&c.Phone&&c.Phone.replace(/\D/g,'')===phone)return true;
+      if(phone&&c.Phone&&String(c.Phone).replace(/\D/g,'')===phone)return true;
       if(data.Email&&c.Email&&c.Email.toLowerCase()===data.Email.toLowerCase())return true;
       if(data.Street&&c.Street&&data.Street.toLowerCase()===c.Street.toLowerCase())return true;
       return false;
