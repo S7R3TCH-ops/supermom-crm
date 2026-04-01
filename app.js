@@ -138,6 +138,43 @@ function dsec(lid, sid, jobs, type) {
 }
 
 // ============================================================================
+// 2b. FINANCIAL BRAIN — single source of truth for all job math
+// ============================================================================
+
+// Pass a job object + optional form overrides (what the user typed).
+// Overrides: { hrs, flatRate, surcharge, addCost, pricingType }
+function getJobTotals(j, ov) {
+  ov = ov || {};
+  const rate   = parseFloat(S.biz.rate) || 50;
+  const tRate  = taxRate();
+  const isFlat = (ov.pricingType || j.Pricing_Type) === 'Flat';
+
+  let base = 0;
+  if (isFlat) {
+    base = parseMoney(ov.flatRate !== undefined ? ov.flatRate : j.Flat_Rate);
+  } else {
+    const hrsSource = ov.hrs !== undefined ? ov.hrs
+      : (j.Job_Status === 'Completed' ? (j.Actual_Duration || j.Estimated_Hours)
+                                       : j.Estimated_Hours);
+    base = (parseFloat(hrsSource) || 0) * rate;
+  }
+
+  const sur     = parseMoney(ov.surcharge !== undefined ? ov.surcharge : j.Surcharge);
+  const addCost = parseMoney(ov.addCost   !== undefined ? ov.addCost   : j.Additional_Cost);
+  const sub     = base + sur + addCost;
+  const hst     = sub * tRate;
+  const total   = sub + hst;
+
+  const prePaid = parseMoney(j.PrePaid_Amount);
+  const paid    = j.Payment_Status === 'Paid'    ? total
+                : j.Payment_Status === 'Partial' ? prePaid
+                : 0;
+  const balance = Math.max(0, total - paid);
+
+  return { base, sur, addCost, sub, hst, total, paid, balance, tRate, isFlat, rate };
+}
+
+// ============================================================================
 // 3. CORE API / DATA SYNC (HYBRID)
 // ============================================================================
 
@@ -614,7 +651,9 @@ function profJobRow(j) {
   
   const hDisplay = j.Job_Status === 'Completed' ? (j.Actual_Duration || j.Estimated_Hours) : j.Estimated_Hours;
 
-  const sp = isPrePaid ? `<span class="pill p-pur">💜 Pre-Paid</span>` :
+  // Pre-paid pill only shows on scheduled (not-yet-complete) jobs that have a deposit
+  const showPrePaidPill = isPrePaid && isSched;
+  const sp = showPrePaidPill ? `<span class="pill p-pur">💜 Pre-Paid</span>` :
     isPaid ? `<span class="pill p-green">✅ ${esc(j.Payment_Method || 'Paid')}</span>` :
     isSched ? (isASAP ? `<span class="pill p-amb">⚡ ASAP</span>` : `<span class="pill p-blue">📅 Booked</span>`) :
     `<span class="pill p-red">⏳ Unpaid</span>`;
@@ -639,9 +678,10 @@ function profJobRow(j) {
       <div class="jn">${esc(j.Service)}</div>
       <div class="jm">${!sd ? '⚡ ASAP' : fmtD(sd)}${j.Time && !j.Time.includes('1899') && sd ? ' @ ' + fmtT(j.Time) : ''} · ${hDisplay || '?'} hrs</div>
       ${j.Completion_Date && !isSched ? `<div class="jm note">✅ Completed ${fmtD(j.Completion_Date)}</div>` : ''}
-      ${j.Completion_Notes ? `<div class="jm note">📋 ${esc(j.Completion_Notes).substring(0, 52)}${j.Completion_Notes.length > 52 ? '…' : ''}</div>` : ''}
+      ${!isSched && j.Completion_Notes ? `<div class="jm note">📋 ${esc(j.Completion_Notes).substring(0, 52)}${j.Completion_Notes.length > 52 ? '…' : ''}</div>` : ''}
+      ${isSched && j.Job_Notes ? `<div class="jm note">📝 ${esc(j.Job_Notes).substring(0, 52)}${j.Job_Notes.length > 52 ? '…' : ''}</div>` : ''}
       ${isOverdue ? `<div class="jm note" style="color:var(--orange);font-style:normal;font-weight:800;">⚠️ Past due — tap to update</div>` : ''}
-      ${isPrePaid && !isPartialPrepay ? `<div class="jm note" style="color:var(--purple);font-style:normal;font-weight:800;">💜 Pre-paid</div>` : ''}
+      ${showPrePaidPill && !isPartialPrepay ? `<div class="jm note" style="color:var(--purple);font-style:normal;font-weight:800;">💜 Pre-paid</div>` : ''}
       ${isPartialPrepay ? `<div class="jm note" style="color:var(--purple);font-style:normal;font-weight:800;">💜 $${parseMoney(j.PrePaid_Amount).toFixed(2)} deposit · <span style="color:var(--red);">$${(parseMoney(j.Total_Amount) - parseMoney(j.PrePaid_Amount)).toFixed(2)} owed at door</span></div>` : ''}
     </div>
     <div class="jr-right">
@@ -693,12 +733,19 @@ function jrHTML(j, type) {
     btnHtml = `<button class="btn b-sm b-amb" data-action="schedule" data-jid="${esc(j.Job_ID)}">📅 Set Date</button>`;
   }
 
-  const prePaid = (j.Payment_Status === 'Paid' || j.Payment_Status === 'Partial') && j.Job_Status !== 'Scheduled';
-  const prePaidAmt = parseMoney(j.PrePaid_Amount);
-  const totalJobAmt = parseMoney(j.Total_Amount);
-  const isPartialCard = j.Payment_Status === 'Partial';
+  const isSchedCard  = j.Job_Status === 'Scheduled';
+  // Pre-paid note only on scheduled jobs with an actual deposit
+  const hasDeposit   = parseMoney(j.PrePaid_Amount) > 0;
+  const prePaidAmt   = parseMoney(j.PrePaid_Amount);
+  const totalJobAmt  = parseMoney(j.Total_Amount);
+  const isPartialCard = j.Payment_Status === 'Partial' && isSchedCard;
+  const showDepositNote = isSchedCard && hasDeposit && !isPartialCard;
   const cd = j.Completion_Date;
   const showCd = (type === 'owed' || type === 'overdue' || type === 'fu' || type === 'review') && cd;
+  // Show completion notes for completed cards, job notes for scheduled cards
+  const noteText = !isSchedCard && j.Completion_Notes ? j.Completion_Notes
+                 : isSchedCard  && j.Job_Notes        ? j.Job_Notes
+                 : '';
 
   return `<div class="jr ${type}" data-action="open-job" data-jid="${esc(j.Job_ID)}">
     <div class="ji">${icons[type] || '📋'}</div>
@@ -706,9 +753,9 @@ function jrHTML(j, type) {
       <div class="jn">${esc(fullN(c))}</div>
       <div class="jm">${esc(j.Service)} · ${dStr}${j.Time && !j.Time.includes('1899') && sd ? ' @ ' + fmtT(j.Time) : ''} · ${hDisplay || '?'} hrs</div>
       ${showCd ? `<div class="jm note">✅ Completed ${fmtD(cd)}</div>` : ''}
-      ${j.Job_Notes ? `<div class="jm note">📝 ${esc(j.Job_Notes).substring(0, 48)}${j.Job_Notes.length > 48 ? '…' : ''}</div>` : ''}
+      ${noteText ? `<div class="jm note">📝 ${esc(noteText).substring(0, 48)}${noteText.length > 48 ? '…' : ''}</div>` : ''}
       ${type === 'overdue' ? `<div class="jm note" style="color:var(--orange);font-style:normal;font-weight:800;">Was ${fmtD(sd)} — tap to update</div>` : ''}
-      ${prePaid && !isPartialCard ? `<div class="jm note" style="color:var(--purple);font-style:normal;font-weight:800;">💜 Pre-paid${j.PrePaid_Reason ? ' · ' + esc(j.PrePaid_Reason) : ''}</div>` : ''}
+      ${showDepositNote ? `<div class="jm note" style="color:var(--purple);font-style:normal;font-weight:800;">💜 Pre-paid${j.PrePaid_Reason ? ' · ' + esc(j.PrePaid_Reason) : ''}</div>` : ''}
       ${isPartialCard ? `<div class="jm note" style="color:var(--purple);font-style:normal;font-weight:800;">💜 $${prePaidAmt.toFixed(2)} deposit · <span style="color:var(--red);">$${(totalJobAmt - prePaidAmt).toFixed(2)} owed at door</span></div>` : ''}
     </div>
     <div class="jr-right">
@@ -973,38 +1020,31 @@ function setPrice(t) {
 }
 
 function calc() {
-  const rate = hourlyRate();
-  const tRate = taxRate(); 
-  let base = 0;
-  
-  if(S.priceType === 'Hourly'){
-    const hrs = parseFloat($('bj-hrs')?.value) || 0;
-    base = hrs * rate;
-  } else {
-    base = parseFloat($('bj-flat')?.value) || 0;
-  }
-  
-  const sur = parseFloat($('bj-sur')?.value) || 0;
-  const subtotal = base + sur;
-  const hst = subtotal * tRate;
-  const tot = subtotal + hst;
+  // Use a minimal job shell so getJobTotals can do the math
+  const mockJ = {
+    Pricing_Type: S.priceType,
+    Flat_Rate:    $('bj-flat')?.value || '0',
+    Surcharge:    $('bj-sur')?.value  || '0',
+    Additional_Cost: '0',
+    Estimated_Hours: $('bj-hrs')?.value || '0',
+    Actual_Duration: '', PrePaid_Amount: '', Payment_Status: ''
+  };
+  const t = getJobTotals(mockJ);
 
-  if($('c-base')) $('c-base').textContent = '$' + base.toFixed(2);
-  if($('c-sur')) $('c-sur').textContent = '$' + sur.toFixed(2);
-  
+  if($('c-base')) $('c-base').textContent = '$' + t.base.toFixed(2);
+  if($('c-sur'))  $('c-sur').textContent  = '$' + t.sur.toFixed(2);
+
   const hstRow = $('c-hst')?.closest('.pr');
   if (hstRow) {
-    if (tRate === 0) {
+    if (t.tRate === 0) {
       hstRow.style.display = 'none';
     } else {
       hstRow.style.display = 'flex';
-      $('c-hst').textContent = '$' + hst.toFixed(2);
-      const taxPct = Math.round(tRate * 100);
-      hstRow.querySelector('span').textContent = `HST (${taxPct}%)`;
+      $('c-hst').textContent = '$' + t.hst.toFixed(2);
+      hstRow.querySelector('span').textContent = `HST (${Math.round(t.tRate * 100)}%)`;
     }
   }
-
-  if($('c-tot')) $('c-tot').textContent = '$' + tot.toFixed(2);
+  if($('c-tot')) $('c-tot').textContent = '$' + t.total.toFixed(2);
 }
 
 function checkTimeConflict() {
@@ -1290,26 +1330,24 @@ async function submitJobEdit(btn, markPaid = false) {
     const addCost = getVal('je-addcost');
     const addCostNotes = $('je-addcost-notes')?.value.trim() || '';
     const method = $('je-pm')?.value || 'Cash';
-    const isFlat = $('je-pr-f')?.classList.contains('on');
-    const pType = isFlat ? 'Flat' : 'Hourly';
+    const isFlat  = $('je-pr-f')?.classList.contains('on');
+    const pType   = isFlat ? 'Flat' : 'Hourly';
+    const revStatus = $('je-rev')?.value ?? j.Review_Status ?? '';
 
-    const rate = parseFloat(S.biz.rate) || 50;
-    const tax = taxRate();
-    let base = 0;
-
-    if (isFlat) {
-      base = parseMoney(flatRate !== undefined ? flatRate : j.Flat_Rate);
-    } else {
-      const hSource = (j.Job_Status === 'Completed' || actHrs !== undefined) ? (actHrs || j.Actual_Duration) : (estHrs || j.Estimated_Hours);
-      base = (parseFloat(hSource) || 0) * rate;
-    }
-
-    const currentSur = parseMoney(sur !== undefined ? sur : j.Surcharge);
-    const currentAdd = parseMoney(addCost !== undefined ? addCost : j.Additional_Cost);
-
-    const sub = base + currentSur + currentAdd;
-    const hst = sub * tax;
-    const tot = sub + hst;
+    // Use getJobTotals so math is identical everywhere
+    // For completed jobs je-hrs is actual hours; for scheduled jobs je-est-hrs is estimated
+    const hrsForCalc = actHrs !== undefined ? actHrs
+                     : (estHrs !== undefined ? estHrs : undefined);
+    const t = getJobTotals(j, {
+      pricingType: pType,
+      flatRate:    flatRate,
+      hrs:         hrsForCalc,
+      surcharge:   sur,
+      addCost:     addCost
+    });
+    const tot        = t.total;
+    const currentSur = t.sur;
+    const currentAdd = t.addCost;
 
     closeMo('m-job');
 
@@ -1321,6 +1359,7 @@ async function submitJobEdit(btn, markPaid = false) {
       Pricing_Type: pType, Flat_Rate: flatRate !== undefined ? String(flatRate) : j.Flat_Rate,
       Surcharge: String(currentSur), Additional_Cost: String(currentAdd),
       Additional_Cost_Notes: addCostNotes || j.Additional_Cost_Notes,
+      Review_Status: revStatus,
       Total_Amount: tot.toFixed(2)
     });
 
@@ -1352,7 +1391,7 @@ async function submitJobEdit(btn, markPaid = false) {
         svc, date, time, notes, comp, hrs: actHrs,
         estimatedHours: estHrs, flatRate: flatRate,
         surcharge: sur, additionalCost: addCost,
-        additionalCostNotes: addCostNotes, method, markPaid
+        additionalCostNotes: addCostNotes, revStatus, method, markPaid
       });
     }
 
@@ -1485,28 +1524,30 @@ function jeSetPrice(t) {
 }
 
 function jeCalc() {
-  const isFlat=$('je-pr-f')?.classList.contains('on');
-  const rate=hourlyRate();
-  let base=0;
-  if(isFlat){base=parseFloat($('je-flat')?.value)||0;}
-  else{base=(parseFloat($('je-est-hrs')?.value)||0)*rate;}
-  const sur=parseFloat($('je-sur')?.value)||0;
-  const addCost=parseFloat($('je-addcost')?.value)||0;
-  const sub=base+sur+addCost;
-  const hst=sub*taxRate();
-  const total=sub+hst;
-  const preview=$('je-calc-preview');
-  if(!preview)return;
-  if(sub===0){preview.style.display='none';return;}
-  preview.style.display='';
-  const taxPct=Math.round(taxRate()*100);
-  let html=`<div style="display:flex;justify-content:space-between;margin-bottom:3px;"><span>${isFlat?'Flat rate':'Labour ('+($('je-est-hrs')?.value||0)+' hrs × $'+rate+'/hr)'}</span><span>$${base.toFixed(2)}</span></div>`;
-  if(sur>0)html+=`<div style="display:flex;justify-content:space-between;margin-bottom:3px;"><span>Surcharge</span><span>$${sur.toFixed(2)}</span></div>`;
-  if(addCost>0)html+=`<div style="display:flex;justify-content:space-between;margin-bottom:3px;"><span>Additional costs</span><span>$${addCost.toFixed(2)}</span></div>`;
-  html+=`<div style="border-top:1px solid var(--blue-b);margin:6px 0 4px;"></div>`;
-  html+=`<div style="display:flex;justify-content:space-between;margin-bottom:3px;color:var(--txt3);"><span>HST (${taxPct}%)</span><span>$${hst.toFixed(2)}</span></div>`;
-  html+=`<div style="display:flex;justify-content:space-between;font-family:'Nunito',sans-serif;font-weight:900;color:var(--txt);font-size:14px;"><span>New Total</span><span>$${total.toFixed(2)}</span></div>`;
-  preview.innerHTML=html;
+  const preview = $('je-calc-preview');
+  if (!preview) return;
+  const isFlat = $('je-pr-f')?.classList.contains('on');
+  const jid = S.jobModal;
+  const j   = getJob(jid) || {};
+  const t   = getJobTotals(j, {
+    pricingType: isFlat ? 'Flat' : 'Hourly',
+    flatRate:    $('je-flat')?.value,
+    hrs:         $('je-est-hrs')?.value,
+    surcharge:   $('je-sur')?.value,
+    addCost:     $('je-addcost')?.value
+  });
+  if (t.sub === 0) { preview.style.display = 'none'; return; }
+  preview.style.display = '';
+  const addNotes = $('je-addcost-notes')?.value.trim() || '';
+  let html = `<div style="display:flex;justify-content:space-between;margin-bottom:3px;">
+    <span>${t.isFlat ? 'Flat rate' : 'Labour (' + ($('je-est-hrs')?.value || 0) + ' hrs × $' + t.rate + '/hr)'}</span>
+    <span>$${t.base.toFixed(2)}</span></div>`;
+  if (t.sur > 0)     html += `<div style="display:flex;justify-content:space-between;margin-bottom:3px;"><span>Surcharge</span><span>$${t.sur.toFixed(2)}</span></div>`;
+  if (t.addCost > 0) html += `<div style="display:flex;justify-content:space-between;margin-bottom:3px;"><span>Additional costs${addNotes ? ' — ' + esc(addNotes) : ''}</span><span>$${t.addCost.toFixed(2)}</span></div>`;
+  html += `<div style="border-top:1px solid var(--blue-b);margin:6px 0 4px;"></div>`;
+  if (t.tRate > 0) html += `<div style="display:flex;justify-content:space-between;margin-bottom:3px;color:var(--txt3);"><span>HST (${Math.round(t.tRate*100)}%)</span><span>$${t.hst.toFixed(2)}</span></div>`;
+  html += `<div style="display:flex;justify-content:space-between;font-family:'Nunito',sans-serif;font-weight:900;color:var(--txt);font-size:14px;"><span>New Total</span><span>$${t.total.toFixed(2)}</span></div>`;
+  preview.innerHTML = html;
 }
 
 function jFU(v) { S.followUp=v; $('jfu-y')?.classList.toggle('on',v==='Yes'); $('jfu-n')?.classList.toggle('on',v==='No'); }
@@ -1580,6 +1621,8 @@ function openCompleteModal(jid) {
         <input class="fi" id="cp-hrs" type="text" inputmode="decimal" pattern="[0-9\.]*" value="${esc(j.Actual_Duration||j.Estimated_Hours||'')}" placeholder="How long did it take?" oninput="calcJobTotal()"></div>
       <div class="fg"><label class="fl">📋 Completion Notes</label>
         <textarea class="ft" id="cp-notes" placeholder="How did it go? Notes for next visit?">${esc(j.Completion_Notes||'')}</textarea></div>
+      <div class="fg"><label class="fl">Surcharge ($)</label>
+        <input class="fi" id="cp-sur" type="text" inputmode="decimal" pattern="[0-9\.]*" value="${parseMoney(j.Surcharge)>0?esc(j.Surcharge):''}" placeholder="e.g. 15.00" oninput="calcJobTotal()"></div>
       <div class="fg"><label class="fl">➕ Additional Costs ($)</label>
         <input class="fi" id="cp-addcost" type="text" inputmode="decimal" pattern="[0-9\.]*" value="${esc(j.Additional_Cost||'')}" placeholder="e.g. 25.00" oninput="calcJobTotal()"></div>
       <div class="fg"><label class="fl">Additional Cost Description</label>
@@ -1601,79 +1644,73 @@ function openCompleteModal(jid) {
 }
 
 function calcJobTotal() {
-  const jid=S.jobModal;const j=getJob(jid);if(!j.Job_ID)return;
-  const rows=$('cp-preview-rows');if(!rows)return;
-  const mOpts=gl('payment_methods').map(m=>`<option value="${esc(m)}">${esc(m)}</option>`).join('');
-  const hrsInput=$('cp-hrs')?.value;
-  const hrsVal=hrsInput!==undefined&&hrsInput!==''?parseFloat(hrsInput)||0:null;
-  const addCost=parseFloat($('cp-addcost')?.value)||0;
-  const rate=parseFloat(j.Hourly_Rate||0)||hourlyRate();
-  const surcharge=parseMoney(j.Surcharge);
-  const prePaidAmt=parseMoney(j.PrePaid_Amount);
-  const isFullPrepay=j.Payment_Status==='Paid';
-  const isPartialPre=j.Payment_Status==='Partial';
+  const jid = S.jobModal; const j = getJob(jid); if (!j.Job_ID) return;
+  const rows = $('cp-preview-rows'); if (!rows) return;
+  const mOpts = gl('payment_methods').map(m => `<option value="${esc(m)}">${esc(m)}</option>`).join('');
 
-  let labourAmt=0;
-  let html='';
-  if(j.Pricing_Type==='Hourly'){
-    const hrs=hrsVal!==null?hrsVal:parseFloat(j.Estimated_Hours||0);
-    labourAmt=hrs*rate;
-    html+=row('Labour',hrs+' hrs × $'+rate.toFixed(0)+'/hr','$'+labourAmt.toFixed(2));
+  const addNotes = $('cp-addcost-notes')?.value.trim() || '';
+  const t = getJobTotals(j, {
+    hrs:       $('cp-hrs')?.value,
+    surcharge: $('cp-sur')?.value,
+    addCost:   $('cp-addcost')?.value
+  });
+
+  const isFullPrepay = j.Payment_Status === 'Paid';
+  const isPartialPre = j.Payment_Status === 'Partial';
+  const prePaidAmt   = parseMoney(j.PrePaid_Amount);
+  const remaining    = isPartialPre ? Math.max(0, t.total - prePaidAmt) : t.total;
+
+  let html = '';
+  if (j.Pricing_Type === 'Hourly') {
+    const hrsDisp = parseFloat($('cp-hrs')?.value) || parseFloat(j.Estimated_Hours || 0);
+    html += row('Labour', hrsDisp + ' hrs × $' + t.rate.toFixed(0) + '/hr', '$' + t.base.toFixed(2));
   } else {
-    labourAmt=parseMoney(j.Flat_Rate)||parseMoney(j.Subtotal)||(parseMoney(j.Total_Amount)/(1+taxRate()));
-    html+=row('Flat rate','','$'+labourAmt.toFixed(2));
+    html += row('Flat rate', '', '$' + t.base.toFixed(2));
   }
-  if(surcharge>0) html+=row('Surcharge','','$'+surcharge.toFixed(2));
-  if(addCost>0)   html+=row('Additional costs','','$'+addCost.toFixed(2));
+  if (t.sur > 0)     html += row('Surcharge', '', '$' + t.sur.toFixed(2));
+  if (t.addCost > 0) html += row('Additional costs', addNotes ? esc(addNotes) : '', '$' + t.addCost.toFixed(2));
 
-  const subtotal=labourAmt+surcharge+addCost;
-  const hst=subtotal*taxRate();
-  const total=subtotal+hst;
-  const remaining=isPartialPre?Math.max(0,total-prePaidAmt):total;
+  html += `<div style="border-top:1px solid var(--blue-b);margin:8px 0 6px;"></div>`;
+  html += row('Subtotal', '', '$' + t.sub.toFixed(2));
+  if (t.tRate > 0) html += row('HST (' + Math.round(t.tRate * 100) + '%)', '', '$' + t.hst.toFixed(2), 'var(--txt3)');
+  html += `<div style="display:flex;justify-content:space-between;font-family:'Nunito',sans-serif;font-weight:900;color:var(--txt);font-size:15px;margin-top:6px;padding-top:6px;border-top:1px solid var(--blue-b);"><span>Total</span><span>$${t.total.toFixed(2)}</span></div>`;
 
-  html+=`<div style="border-top:1px solid var(--blue-b);margin:8px 0 6px;"></div>`;
-  html+=row('Subtotal','','$'+subtotal.toFixed(2));
-  html+=row('HST ('+Math.round(taxRate()*100)+'%)','','$'+hst.toFixed(2),'var(--txt3)');
-  html+=`<div style="display:flex;justify-content:space-between;font-family:'Nunito',sans-serif;font-weight:900;color:var(--txt);font-size:15px;margin-top:6px;padding-top:6px;border-top:1px solid var(--blue-b);"><span>Total</span><span>$${total.toFixed(2)}</span></div>`;
-
-  if(isPartialPre){
-    html+=`<div style="border-top:1px solid var(--blue-b);margin:8px 0 6px;"></div>`;
-    html+=`<div style="display:flex;justify-content:space-between;color:var(--purple);font-weight:700;margin-bottom:4px;"><span>💜 Pre-payment received</span><span>-$${prePaidAmt.toFixed(2)}</span></div>`;
-    html+=`<div style="display:flex;justify-content:space-between;font-family:'Nunito',sans-serif;font-weight:900;color:var(--red);font-size:15px;margin-top:2px;"><span>💸 Balance owing</span><span>$${remaining.toFixed(2)}</span></div>`;
+  if (isPartialPre) {
+    html += `<div style="border-top:1px solid var(--blue-b);margin:8px 0 6px;"></div>`;
+    html += `<div style="display:flex;justify-content:space-between;color:var(--purple);font-weight:700;margin-bottom:4px;"><span>💜 Pre-payment received</span><span>-$${prePaidAmt.toFixed(2)}</span></div>`;
+    html += `<div style="display:flex;justify-content:space-between;font-family:'Nunito',sans-serif;font-weight:900;color:var(--red);font-size:15px;margin-top:2px;"><span>💸 Balance owing</span><span>$${remaining.toFixed(2)}</span></div>`;
   }
-  rows.innerHTML=html;
+  rows.innerHTML = html;
 
-  const ps=$('cp-pay-section');if(!ps)return;
-  if(isFullPrepay){
-    ps.innerHTML=`<div class="info-box purple" style="margin-bottom:14px;">💜 Fully pre-paid — payment already recorded.</div>`;
-    S.payNow=true;
+  const ps = $('cp-pay-section'); if (!ps) return;
+  if (isFullPrepay) {
+    ps.innerHTML = `<div class="info-box purple" style="margin-bottom:14px;">💜 Fully pre-paid — payment already recorded.</div>`;
+    S.payNow = true;
   } else {
-    const isPartial=isPartialPre;
-    const defaultPaid=isPartial; 
-    if(typeof S.payNow!=='boolean')S.payNow=defaultPaid;
-    ps.innerHTML=`
-      <div class="fg"><label class="fl" style="font-weight:900;color:var(--txt);">${isPartial?'💰 Collect Balance: <strong style="color:var(--red);">$'+remaining.toFixed(2)+'</strong>':'💰 Payment'}</label>
+    if (typeof S.payNow !== 'boolean') S.payNow = isPartialPre;
+    ps.innerHTML = `
+      <div class="fg"><label class="fl" style="font-weight:900;color:var(--txt);">${isPartialPre ? '💰 Collect Balance: <strong style="color:var(--red);">$' + remaining.toFixed(2) + '</strong>' : '💰 Payment'}</label>
         <div class="tr">
-          <button class="tb ${S.payNow?'':'on'}" id="pay-l" onclick="setPayNow(false)">⏳ ${isPartial?'Collect later':'Not paid yet'}</button>
-          <button class="tb ${S.payNow?'on':''}" id="pay-n" onclick="setPayNow(true)">💵 ${isPartial?'Collect $'+remaining.toFixed(2)+' now':'Paid now'}</button>
+          <button class="tb ${S.payNow ? '' : 'on'}" id="pay-l" onclick="setPayNow(false)">⏳ ${isPartialPre ? 'Collect later' : 'Not paid yet'}</button>
+          <button class="tb ${S.payNow ? 'on' : ''}" id="pay-n" onclick="setPayNow(true)">💵 ${isPartialPre ? 'Collect $' + remaining.toFixed(2) + ' now' : 'Paid now'}</button>
         </div>
       </div>
-      <div id="cp-pm-g" class="fg" style="display:${S.payNow?'':'none'};"><label class="fl">Payment Method</label><select class="fs" id="cp-pm">${mOpts}</select></div>
-      ${S.payNow?`<div style="background:var(--green-s);border:2px solid var(--green-b);border-radius:12px;padding:12px 14px;margin-bottom:4px;">
+      <div id="cp-pm-g" class="fg" style="display:${S.payNow ? '' : 'none'};"><label class="fl">Payment Method</label><select class="fs" id="cp-pm">${mOpts}</select></div>
+      ${S.payNow ? `<div style="background:var(--green-s);border:2px solid var(--green-b);border-radius:12px;padding:12px 14px;margin-bottom:4px;">
         <div style="font-family:'Nunito',sans-serif;font-weight:900;font-size:15px;color:var(--green);margin-bottom:4px;">✅ Confirming payment received</div>
-        <div style="font-size:13px;color:var(--txt2);">${isPartial?'Balance':'Total'}: <strong style="color:var(--green);">$${remaining.toFixed(2)}</strong></div>
-      </div>`:''}`;
+        <div style="font-size:13px;color:var(--txt2);">${isPartialPre ? 'Balance' : 'Total'}: <strong style="color:var(--green);">$${remaining.toFixed(2)}</strong></div>
+      </div>` : ''}`;
   }
-  const btn=$('cp-save-btn');
-  if(btn){
-    if(isFullPrepay) btn.textContent='✅ Save Completed Job';
-    else if(S.payNow){
-      const amt=isPartialPre?remaining:total;
-      btn.textContent='✅ Save + Confirm $'+amt.toFixed(2)+' Received';
-      btn.style.background='var(--green)';
+  const btn = $('cp-save-btn');
+  if (btn) {
+    if (isFullPrepay) btn.textContent = '✅ Save Completed Job';
+    else if (S.payNow) {
+      const amt = isPartialPre ? remaining : t.total;
+      btn.textContent = '✅ Save + Confirm $' + amt.toFixed(2) + ' Received';
+      btn.style.background = 'var(--green)';
     } else {
-      btn.textContent='💾 Save Job — Collect Payment Later';
-      btn.style.background='';
+      btn.textContent = '💾 Save Job — Collect Payment Later';
+      btn.style.background = '';
     }
   }
 }
@@ -1702,32 +1739,25 @@ async function submitComplete(btn) {
   const addCost=parseFloat($('cp-addcost')?.value)||0;
   const addCostNotes=$('cp-addcost-notes')?.value.trim()||'';
 
-  const rate=parseFloat(j0.Hourly_Rate||0)||hourlyRate();
-  const surcharge=parseMoney(j0.Surcharge);
-  const prePaidAmt=parseMoney(j0.PrePaid_Amount);
-  const isFullPrepay=j0.Payment_Status==='Paid';
-  const isPartialPre=j0.Payment_Status==='Partial';
-  let labourAmt=0;
-  if(j0.Pricing_Type==='Hourly'){
-    const hrsNum=parseFloat(hrs)||parseFloat(j0.Estimated_Hours||0);
-    labourAmt=hrsNum*rate;
-  }else{
-    labourAmt=parseMoney(j0.Flat_Rate)||parseMoney(j0.Subtotal)||(parseMoney(j0.Total_Amount)/(1+taxRate()));
-  }
-  const subtotal=labourAmt+surcharge+addCost;
-  const hst=subtotal*taxRate();
-  const newTotal=subtotal+hst;
-  const remaining=isPartialPre?Math.max(0,newTotal-prePaidAmt):newTotal;
+  const surchargeInput = $('cp-sur')?.value;
+  const t = getJobTotals(j0, { hrs, surcharge: surchargeInput, addCost: String(addCost) });
+  const newTotal   = t.total;
+  const surcharge  = t.sur;
+  const prePaidAmt = parseMoney(j0.PrePaid_Amount);
+  const isFullPrepay = j0.Payment_Status === 'Paid';
+  const isPartialPre = j0.Payment_Status === 'Partial';
+  const remaining  = isPartialPre ? Math.max(0, newTotal - prePaidAmt) : newTotal;
 
   closeMo('m-comp');
   const j=S.jobs.find(x=>x.Job_ID===jid);
   if(j){
-    j.Job_Status='Completed';j.Completion_Date=today();
-    j.Actual_Duration=hrs;j.Completion_Notes=notes;j.Photo_Links=photos;j.Follow_Up=S.followUp;
-    if(S.reqRev)j.Review_Status='Pending';
+    j.Job_Status='Completed'; j.Completion_Date=today();
+    j.Actual_Duration=hrs; j.Completion_Notes=notes; j.Photo_Links=photos; j.Follow_Up=S.followUp;
+    if(S.reqRev) j.Review_Status='Pending';
     j.Total_Amount=newTotal.toFixed(2);
-    if(addCost>0){j.Additional_Cost=String(addCost);j.Additional_Cost_Notes=addCostNotes;}
-    if(S.payNow||isFullPrepay){j.Payment_Status='Paid';if(method)j.Payment_Method=method;}
+    if(surcharge > 0) j.Surcharge=String(surcharge);
+    if(addCost > 0){ j.Additional_Cost=String(addCost); j.Additional_Cost_Notes=addCostNotes; }
+    if(S.payNow||isFullPrepay){ j.Payment_Status='Paid'; if(method) j.Payment_Method=method; }
   }
 
   const tod=today();const inv=S.financials.find(f=>f.Job_ID===jid);
@@ -1745,9 +1775,13 @@ async function submitComplete(btn) {
     else S.financials.push({Invoice_ID:'INV'+Date.now(),Job_ID:jid,Client_ID:j.Client_ID,Amount:newTotal.toFixed(2),Status:'Pending',Payment_Method:'',Paid_Date:''});
   }
 
-  if(!S.isDemo)await gasCall({action:'markJobComplete',jobId:jid,followUp:S.followUp,notes,photos,actualHours:hrs,reqRev:S.reqRev,markPaid:S.payNow||isFullPrepay,method,additionalCost:addCost,additionalCostNotes:addCostNotes,totalAmount:newTotal.toFixed(2),reviewStatus:j?.Review_Status||'',paymentStatus:j?.Payment_Status||''});
+  if(!S.isDemo) await gasCall({action:'markJobComplete',jobId:jid,followUp:S.followUp,notes,photos,
+    actualHours:hrs,reqRev:S.reqRev,markPaid:S.payNow||isFullPrepay,method,
+    surcharge:String(surcharge),additionalCost:addCost,additionalCostNotes:addCostNotes,
+    totalAmount:newTotal.toFixed(2),reviewStatus:j?.Review_Status||'',paymentStatus:j?.Payment_Status||''});
+  try { localStorage.removeItem('smhq_cache'); } catch(e) {}
   const toast=isFullPrepay?'✅ Job complete — fully pre-paid':S.payNow?'✅ Done + $'+newTotal.toFixed(2)+' paid!':'✅ Job saved — payment pending';
-  refreshData();showToast(toast);
+  refreshData(); showToast(toast);
   _isSaving=false;
 }
 
