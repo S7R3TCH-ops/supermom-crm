@@ -1,7 +1,7 @@
 // ============================================================================
 // 1. CONSTANTS, GLOBALS & STATE
 // ============================================================================
-const APP_VERSION = '3.95';
+const APP_VERSION = '3.91';
 
 // The URL used when testing outside of Google Apps Script (e.g. GitHub)
 const GAS_URL = "https://script.google.com/macros/s/AKfycbzoqPyDDmpdgNp60xAKrXtClxqOdWxmmwgnH4sK7fM-rcM8LyPoE9Br7Lg6CtI3hCREzw/exec";
@@ -649,12 +649,13 @@ function profJobRow(j) {
   const isDone = isArchived(j);
   const tc = isDone ? 'paid' : isOverdue ? 'overdue' : isSched ? 'sched' : isPaid ? 'paid' : j.Job_Status === 'Completed' ? 'owed' : 'sched';
   
-  const hDisplay = j.Job_Status === 'Completed' ? (j.Actual_Duration || j.Estimated_Hours) : j.Estimated_Hours;
+  const hRaw    = j.Job_Status === 'Completed' ? (j.Actual_Duration || j.Estimated_Hours) : j.Estimated_Hours;
+  const hDisplay = hRaw ? (j.Job_Status === 'Completed' ? hRaw + ' hrs' : 'est. ' + hRaw + ' hrs') : '';
 
   // Pre-paid pill only shows on scheduled (not-yet-complete) jobs that have a deposit
   const showPrePaidPill = isPrePaid && isSched;
   const sp = showPrePaidPill ? `<span class="pill p-pur">💜 Pre-Paid</span>` :
-    isPaid ? `<span class="pill p-green">✅ ${esc(j.Payment_Method || 'Paid')}</span>` :
+    isPaid ? `<span class="pill p-green">✅ Paid in Full</span>` :
     isSched ? (isASAP ? `<span class="pill p-amb">⚡ ASAP</span>` : `<span class="pill p-blue">📅 Booked</span>`) :
     `<span class="pill p-red">⏳ Unpaid</span>`;
   
@@ -676,7 +677,7 @@ function profJobRow(j) {
     <div class="ji">${isPaid ? '✅' : isOverdue ? '🟠' : isSched ? '🔵' : '🔴'}</div>
     <div class="jd">
       <div class="jn">${esc(j.Service)}</div>
-      <div class="jm">${!sd ? '⚡ ASAP' : fmtD(sd)}${j.Time && !j.Time.includes('1899') && sd ? ' @ ' + fmtT(j.Time) : ''} · ${hDisplay || '?'} hrs</div>
+      <div class="jm">${!sd ? '⚡ ASAP' : fmtD(sd)}${j.Time && !j.Time.includes('1899') && sd ? ' @ ' + fmtT(j.Time) : ''}${hDisplay ? ' · ' + hDisplay : ''}</div>
       ${j.Completion_Date && !isSched ? `<div class="jm note">✅ Completed ${fmtD(j.Completion_Date)}</div>` : ''}
       ${!isSched && j.Completion_Notes ? `<div class="jm note">📋 ${esc(j.Completion_Notes).substring(0, 52)}${j.Completion_Notes.length > 52 ? '…' : ''}</div>` : ''}
       ${isSched && j.Job_Notes ? `<div class="jm note">📝 ${esc(j.Job_Notes).substring(0, 52)}${j.Job_Notes.length > 52 ? '…' : ''}</div>` : ''}
@@ -699,7 +700,8 @@ function jrHTML(j, type) {
   const dStr = isASAP ? '⚡ ASAP' : fmtD(sd);
   const icons = { owed: '🔴', sched: '🔵', fu: '🔔', review: '⭐', overdue: '🟠', unschd: '🗓️', lead: '🟡' };
 
-  const hDisplay = j.Job_Status === 'Completed' ? (j.Actual_Duration || j.Estimated_Hours) : j.Estimated_Hours;
+  const hRaw2    = j.Job_Status === 'Completed' ? (j.Actual_Duration || j.Estimated_Hours) : j.Estimated_Hours;
+  const hDisplay = hRaw2 ? (j.Job_Status === 'Completed' ? hRaw2 + ' hrs' : 'est. ' + hRaw2 + ' hrs') : '';
 
   let pillHtml = '';
   if (type === 'sched') {
@@ -751,7 +753,7 @@ function jrHTML(j, type) {
     <div class="ji">${icons[type] || '📋'}</div>
     <div class="jd">
       <div class="jn">${esc(fullN(c))}</div>
-      <div class="jm">${esc(j.Service)} · ${dStr}${j.Time && !j.Time.includes('1899') && sd ? ' @ ' + fmtT(j.Time) : ''} · ${hDisplay || '?'} hrs</div>
+      <div class="jm">${esc(j.Service)} · ${dStr}${j.Time && !j.Time.includes('1899') && sd ? ' @ ' + fmtT(j.Time) : ''}${hDisplay ? ' · ' + hDisplay : ''}</div>
       ${showCd ? `<div class="jm note">✅ Completed ${fmtD(cd)}</div>` : ''}
       ${noteText ? `<div class="jm note">📝 ${esc(noteText).substring(0, 48)}${noteText.length > 48 ? '…' : ''}</div>` : ''}
       ${type === 'overdue' ? `<div class="jm note" style="color:var(--orange);font-style:normal;font-weight:800;">Was ${fmtD(sd)} — tap to update</div>` : ''}
@@ -833,7 +835,9 @@ async function submitClient(thenBook=false) {
   if(S.editCli){
     const c=S.clients.find(x=>x.Client_ID===S.editCli);if(c)Object.assign(c,data);
     if(!S.isDemo)await gasCall({action:'updateClient',clientId:S.editCli,...data});
-    showToast('✓ Client updated');refreshData();goBack();
+    showToast('✓ Client updated');
+    goBack();
+    if(S.curCli) openProfile(S.curCli);
   }else{
     const phone=data.Phone.replace(/\D/g,'');
     const dup=S.clients.find(c=>{
@@ -1097,18 +1101,22 @@ async function submitJob() {
   }
   
   if(schedType==='asap')date='';
-  const rate=hourlyRate();
-  let base=0;
-  if(S.priceType==='Hourly'){base=(parseFloat($('bj-hrs')?.value)||0)*rate;}
-  else{base=parseFloat($('bj-flat')?.value)||0;}
-  const sur=parseFloat($('bj-sur')?.value)||0;
-  const hst=(base+sur)*taxRate();const tot=base+sur+hst;
   const notes=$('bj-notes')?.value.trim()||'';
-  
+
+  // Build a shell job so getJobTotals does the math consistently
+  const mockBook = {
+    Pricing_Type:    S.priceType,
+    Flat_Rate:       $('bj-flat')?.value || '0',
+    Estimated_Hours: $('bj-hrs')?.value  || '0',
+    Surcharge:       $('bj-sur')?.value  || '0',
+    Additional_Cost: '0', Actual_Duration: '', PrePaid_Amount: '', Payment_Status: ''
+  };
+  const bt = getJobTotals(mockBook);
+
   const data={Job_ID:'J'+Date.now(),Client_ID:cid,Service:svc,Scheduled_Date:date,Completion_Date:'',Time:time,
     Pricing_Type:S.priceType,Estimated_Hours:S.priceType==='Hourly'?($('bj-hrs')?.value||'2'):'',
-    Flat_Rate:S.priceType==='Flat'?($('bj-flat')?.value||''):'',Surcharge:String(sur),
-    Subtotal:String(base),HST:hst.toFixed(2),Total_Amount:tot.toFixed(2),
+    Flat_Rate:S.priceType==='Flat'?($('bj-flat')?.value||''):'',Surcharge:String(bt.sur),
+    Subtotal:bt.sub.toFixed(2),HST:bt.hst.toFixed(2),Total_Amount:bt.total.toFixed(2),
     Job_Status:'Scheduled',Follow_Up:'No',
     Scheduling_Type:schedType==='hard'?'Hard Date':schedType==='asap'?'ASAP':'By Date',
     Job_Notes:notes,Completion_Notes:'',Actual_Duration:'',Additional_Cost:'',Additional_Cost_Notes:'',
@@ -1127,12 +1135,17 @@ async function submitJob() {
   if(btn){btn.disabled=false;btn.innerHTML=origText;btn.style.opacity='1';}
 
   if(!S.isDemo){
-    gasCall({action:'addJob',...data}).then(r=>{
+    try {
+      const r = await gasCall({action:'addJob',...data});
       if(r&&r.Job_ID){
         const idx=S.jobs.findIndex(x=>x.Job_ID===data.Job_ID);
         if(idx!==-1)S.jobs[idx].Job_ID=r.Job_ID;
       }
-    });
+      if(!r||!r.success) showToast('⚠️ Job may not have saved — check connection');
+    } catch(e) {
+      showToast('⚠️ Job save failed — please retry');
+    }
+    try { localStorage.removeItem('smhq_cache'); } catch(e) {}
   }
 }
 
@@ -1155,21 +1168,11 @@ function openJobModal(jid) {
     const rate       = parseFloat(S.biz.rate) || 50;
     const tRate      = taxRate();
 
-    // Rebuild labour/base from stored values so display always matches reality
-    let labourAmt = 0;
-    let labourLabel = '';
-    if (j.Pricing_Type === 'Flat') {
-      labourAmt  = parseMoney(j.Flat_Rate) || parseMoney(j.Total_Amount) / (1 + tRate);
-      labourLabel = 'Flat rate';
-    } else {
-      const hrs  = parseFloat(j.Actual_Duration || j.Estimated_Hours || 0);
-      labourAmt  = hrs * rate;
-      labourLabel = `${hrs} hrs × $${rate.toFixed(0)}/hr`;
-    }
-
-    const sub   = labourAmt + surcharge + addCost;
-    const hst   = sub * tRate;
-    const total = sub + hst;
+    // Use getJobTotals so summary always matches what was saved
+    const t2 = getJobTotals(j);
+    const labourLabel = j.Pricing_Type === 'Flat'
+      ? `${esc(j.Service)} (flat rate)`
+      : `${parseFloat(j.Actual_Duration||j.Estimated_Hours||0)} hrs × $${t2.rate.toFixed(0)}/hr`;
 
     const bdr = `border-top:1px solid var(--green-b);margin:8px 0 6px;`;
     const lrow = (lbl, sub, val, bold) =>
@@ -1186,33 +1189,33 @@ function openJobModal(jid) {
           ${j.Completion_Date?' · Completed '+fmtD(j.Completion_Date):''}
         </div>
 
-        ${lrow(labourLabel, '', '$'+labourAmt.toFixed(2))}
-        ${surcharge > 0 ? lrow('Surcharge', '', '$'+surcharge.toFixed(2)) : ''}
-        ${addCost > 0 ? lrow(
-            'Additional costs',
-            j.Additional_Cost_Notes ? esc(j.Additional_Cost_Notes) : '',
-            '$'+addCost.toFixed(2)
+        ${lrow(labourLabel, '', '$'+t2.base.toFixed(2))}
+        ${t2.sur > 0 ? lrow('Travel', '', '$'+t2.sur.toFixed(2)) : ''}
+        ${t2.addCost > 0 ? lrow(
+            j.Additional_Cost_Notes ? esc(j.Additional_Cost_Notes) : 'Additional costs',
+            '',
+            '$'+t2.addCost.toFixed(2)
           ) : ''}
 
         <div style="${bdr}"></div>
-        ${lrow('Subtotal', '', '$'+sub.toFixed(2))}
-        ${tRate > 0 ? lrow('HST ('+Math.round(tRate*100)+'%)', addCost > 0 ? 'incl. on additional costs' : '', '$'+hst.toFixed(2)) : ''}
+        ${lrow('Subtotal', '', '$'+t2.sub.toFixed(2))}
+        ${t2.tRate > 0 ? lrow('HST ('+Math.round(t2.tRate*100)+'%)', '', '$'+t2.hst.toFixed(2)) : ''}
         <div style="${bdr}"></div>
-        ${lrow('Total', '', '$'+total.toFixed(2), true)}
+        ${lrow('Total', '', '$'+t2.total.toFixed(2), true)}
 
         ${j.Completion_Notes?`<div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--green-b);">
           <div style="color:var(--txt3);font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;">Completion Notes</div>
           <div style="font-size:13px;color:var(--txt);line-height:1.5;">${esc(j.Completion_Notes)}</div>
         </div>`:''}
         ${j.Job_Notes?`<div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--green-b);">
-          <div style="color:var(--txt3);font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;">Job Notes</div>
+          <div style="color:var(--txt3);font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;">Pre-Job Notes</div>
           <div style="font-size:13px;color:var(--txt);line-height:1.5;">${esc(j.Job_Notes)}</div>
         </div>`:''}
 
         <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--green-b);display:flex;gap:10px;flex-wrap:wrap;">
           <div style="flex:1;">
             <div style="color:var(--txt3);font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;">Payment</div>
-            <div style="font-weight:700;font-size:13px;">${isPaid?'✅ '+esc(j.Payment_Method||'Paid'):'⏳ Unpaid'}</div>
+            <div style="font-weight:700;font-size:13px;">${isPaid?'✅ Paid in Full · '+esc(j.Payment_Method||''):'⏳ Unpaid'}</div>
           </div>
           <div style="flex:1;">
             <div style="color:var(--txt3);font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;">Review</div>
