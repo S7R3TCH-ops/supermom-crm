@@ -575,6 +575,8 @@ function showCollectedList() {
       let statusLine = '';
       if (isComp && j.Completion_Date) {
         statusLine = '✅ Completed ' + fmtD(j.Completion_Date);
+      } else if (j.Scheduling_Type === 'ASAP' && !j.Scheduled_Date) {
+        statusLine = '⚡ ASAP — to be scheduled';
       } else if (j.Scheduled_Date) {
         statusLine = '📅 Scheduled ' + fmtD(j.Scheduled_Date);
       } else {
@@ -737,17 +739,21 @@ function profJobRow(j) {
   const tod = today(); const sd = j.Scheduled_Date;
   const isASAP = j.Scheduling_Type === 'ASAP' && !sd;
   const isOverdue = isSched && sd && sd < tod;
-  const isPrePaid = isSched && (j.Payment_Status === 'Paid' || j.Payment_Status === 'Partial');
-  const isPartialPrepay = isSched && j.Payment_Status === 'Partial';
+  // Prepaid: any non-completed job with payment recorded
+  const notComplete  = j.Job_Status !== 'Completed';
+  const isFullPre    = notComplete && j.Payment_Status === 'Paid';
+  const isPartialPre = notComplete && j.Payment_Status === 'Partial';
+  const isAnyPrepaid = isFullPre || isPartialPre;
+  const prePaidAmt   = parseMoney(j.PrePaid_Amount);
+  const totalJobAmt  = parseMoney(j.Total_Amount);
   const isDone = isArchived(j);
   const tc = isDone ? 'paid' : isOverdue ? 'overdue' : isSched ? 'sched' : isPaid ? 'paid' : j.Job_Status === 'Completed' ? 'owed' : 'sched';
   
   const hRaw    = j.Job_Status === 'Completed' ? (j.Actual_Duration || j.Estimated_Hours) : j.Estimated_Hours;
   const hDisplay = hRaw ? (j.Job_Status === 'Completed' ? hRaw + ' hrs' : 'est. ' + hRaw + ' hrs') : '';
 
-  // Pre-paid pill only shows on scheduled (not-yet-complete) jobs that have a deposit
-  const showPrePaidPill = isPrePaid && isSched;
-  const sp = showPrePaidPill ? `<span class="pill p-pur">💜 Pre-Paid</span>` :
+  // Pill logic — prepaid takes priority over booking/ASAP status
+  const sp = isAnyPrepaid ? (isFullPre ? `<span class="pill p-pur">💜 Pre-Paid</span>` : `<span class="pill p-pur">💜 Deposit</span>`) :
     isPaid ? `<span class="pill p-green">✅ Paid in Full</span>` :
     isSched ? (isASAP ? `<span class="pill p-amb">⚡ ASAP</span>` : `<span class="pill p-blue">📅 Booked</span>`) :
     `<span class="pill p-red">⏳ Unpaid</span>`;
@@ -763,8 +769,16 @@ function profJobRow(j) {
     acts += `<button class="btn b-sm b-bl" data-action="complete" data-jid="${esc(j.Job_ID)}">✅ Done</button>`;
   }
   if (!isPaid && j.Job_Status === 'Completed') acts += `<button class="btn b-sm b-g" data-action="p-paid" data-jid="${esc(j.Job_ID)}">💰 Paid</button>`;
-  if (isSched && !isPrePaid) acts += `<button class="btn b-sm b-s" data-action="p-prepay" data-jid="${esc(j.Job_ID)}">💜 Pre-Pay</button>`;
+  if (isSched && !isAnyPrepaid) acts += `<button class="btn b-sm b-s" data-action="p-prepay" data-jid="${esc(j.Job_ID)}">💜 Pre-Pay</button>`;
   if (j.Job_Status === 'Completed') acts += `<button class="btn b-sm b-s" data-action="bookagain" data-jid="${esc(j.Job_ID)}">📋 Again</button>`;
+
+  // Prepaid note line
+  let ppNote = '';
+  if (isFullPre) {
+    ppNote = `<div class="jm note" style="color:var(--purple);font-style:normal;font-weight:800;">💜 Paid in full${prePaidAmt > 0 ? ' · $' + prePaidAmt.toFixed(2) : ''}${j.PrePaid_Reason ? ' · ' + esc(j.PrePaid_Reason) : ''}</div>`;
+  } else if (isPartialPre && prePaidAmt > 0) {
+    ppNote = `<div class="jm note" style="color:var(--purple);font-style:normal;font-weight:800;">💜 $${prePaidAmt.toFixed(2)} deposit · <span style="color:var(--red);">$${(totalJobAmt - prePaidAmt).toFixed(2)} owed at door</span></div>`;
+  }
 
   return `<div class="jr ${tc}" data-action="open-job" data-jid="${esc(j.Job_ID)}">
     <div class="ji">${isPaid ? '✅' : isOverdue ? '🟠' : isSched ? '🔵' : '🔴'}</div>
@@ -775,8 +789,7 @@ function profJobRow(j) {
       ${!isSched && j.Completion_Notes ? `<div class="jm note">📋 ${esc(j.Completion_Notes).substring(0, 52)}${j.Completion_Notes.length > 52 ? '…' : ''}</div>` : ''}
       ${isSched && j.Job_Notes ? `<div class="jm note">📝 ${esc(j.Job_Notes).substring(0, 52)}${j.Job_Notes.length > 52 ? '…' : ''}</div>` : ''}
       ${isOverdue ? `<div class="jm note" style="color:var(--orange);font-style:normal;font-weight:800;">⚠️ Past due — tap to update</div>` : ''}
-      ${showPrePaidPill && !isPartialPrepay ? `<div class="jm note" style="color:var(--purple);font-style:normal;font-weight:800;">💜 Pre-paid</div>` : ''}
-      ${isPartialPrepay ? `<div class="jm note" style="color:var(--purple);font-style:normal;font-weight:800;">💜 $${parseMoney(j.PrePaid_Amount).toFixed(2)} deposit · <span style="color:var(--red);">$${(parseMoney(j.Total_Amount) - parseMoney(j.PrePaid_Amount)).toFixed(2)} owed at door</span></div>` : ''}
+      ${ppNote}
     </div>
     <div class="jr-right">
       <div style="display:flex;align-items:center;gap:4px;justify-content:flex-end;white-space:nowrap;">${rev}${sp}<span class="ja">$${parseMoney(j.Total_Amount).toFixed(2)}</span></div>
@@ -796,8 +809,20 @@ function jrHTML(j, type) {
   const hRaw2    = j.Job_Status === 'Completed' ? (j.Actual_Duration || j.Estimated_Hours) : j.Estimated_Hours;
   const hDisplay = hRaw2 ? (j.Job_Status === 'Completed' ? hRaw2 + ' hrs' : 'est. ' + hRaw2 + ' hrs') : '';
 
+  // Prepaid detection — works for scheduled, ASAP, by-date, any non-completed job
+  const notComplete  = j.Job_Status !== 'Completed';
+  const isFullPre    = notComplete && j.Payment_Status === 'Paid';
+  const isPartialPre = notComplete && j.Payment_Status === 'Partial';
+  const isAnyPrepaid = isFullPre || isPartialPre;
+  const prePaidAmt   = parseMoney(j.PrePaid_Amount);
+  const totalJobAmt  = parseMoney(j.Total_Amount);
+
   let pillHtml = '';
-  if (type === 'sched') {
+  if (isAnyPrepaid) {
+    pillHtml = isFullPre
+      ? `<span class="pill p-pur">💜 Pre-Paid</span>`
+      : `<span class="pill p-pur">💜 Deposit</span>`;
+  } else if (type === 'sched') {
     pillHtml = isASAP ? `<span class="pill p-amb">⚡ ASAP</span>` : `<span class="pill p-blue">📅 Booked</span>`;
   } else if (type === 'owed') {
     pillHtml = `<span class="pill p-red">⏳ Unpaid</span>`;
@@ -828,19 +853,19 @@ function jrHTML(j, type) {
     btnHtml = `<button class="btn b-sm b-amb" data-action="schedule" data-jid="${esc(j.Job_ID)}">📅 Set Date</button>`;
   }
 
-  const isSchedCard  = j.Job_Status === 'Scheduled';
-  // Pre-paid note only on scheduled jobs with an actual deposit
-  const hasDeposit   = parseMoney(j.PrePaid_Amount) > 0;
-  const prePaidAmt   = parseMoney(j.PrePaid_Amount);
-  const totalJobAmt  = parseMoney(j.Total_Amount);
-  const isPartialCard = j.Payment_Status === 'Partial' && isSchedCard;
-  const showDepositNote = isSchedCard && hasDeposit && !isPartialCard;
   const cd = j.Completion_Date;
   const showCd = (type === 'owed' || type === 'overdue' || type === 'fu' || type === 'review') && cd;
-  // Show completion notes for completed cards, job notes for scheduled cards
-  const noteText = !isSchedCard && j.Completion_Notes ? j.Completion_Notes
-                 : isSchedCard  && j.Job_Notes        ? j.Job_Notes
+  const noteText = j.Job_Status !== 'Completed' && j.Job_Notes ? j.Job_Notes
+                 : j.Job_Status === 'Completed' && j.Completion_Notes ? j.Completion_Notes
                  : '';
+
+  // Prepaid note line — shows for any non-completed prepaid job
+  let ppNote = '';
+  if (isFullPre) {
+    ppNote = `<div class="jm note" style="color:var(--purple);font-style:normal;font-weight:800;">💜 Paid in full${prePaidAmt > 0 ? ' · $' + prePaidAmt.toFixed(2) : ''}${j.PrePaid_Reason ? ' · ' + esc(j.PrePaid_Reason) : ''}</div>`;
+  } else if (isPartialPre && prePaidAmt > 0) {
+    ppNote = `<div class="jm note" style="color:var(--purple);font-style:normal;font-weight:800;">💜 $${prePaidAmt.toFixed(2)} deposit · <span style="color:var(--red);">$${(totalJobAmt - prePaidAmt).toFixed(2)} owed at door</span></div>`;
+  }
 
   return `<div class="jr ${type}" data-action="open-job" data-jid="${esc(j.Job_ID)}">
     <div class="ji">${icons[type] || '📋'}</div>
@@ -850,8 +875,7 @@ function jrHTML(j, type) {
       ${showCd ? `<div class="jm note">✅ Completed ${fmtD(cd)}</div>` : ''}
       ${noteText ? `<div class="jm note">📝 ${esc(noteText).substring(0, 48)}${noteText.length > 48 ? '…' : ''}</div>` : ''}
       ${type === 'overdue' ? `<div class="jm note" style="color:var(--orange);font-style:normal;font-weight:800;">Was ${fmtD(sd)} — tap to update</div>` : ''}
-      ${showDepositNote ? `<div class="jm note" style="color:var(--purple);font-style:normal;font-weight:800;">💜 Pre-paid${j.PrePaid_Reason ? ' · ' + esc(j.PrePaid_Reason) : ''}</div>` : ''}
-      ${isPartialCard ? `<div class="jm note" style="color:var(--purple);font-style:normal;font-weight:800;">💜 $${prePaidAmt.toFixed(2)} deposit · <span style="color:var(--red);">$${(totalJobAmt - prePaidAmt).toFixed(2)} owed at door</span></div>` : ''}
+      ${ppNote}
     </div>
     <div class="jr-right">
       <div style="display:flex;align-items:center;gap:4px;justify-content:flex-end;white-space:nowrap;">${pillHtml}<span class="ja">$${amt.toFixed(2)}</span></div>
