@@ -513,6 +513,66 @@ function setMoneyFilter(f) { S.moneyFilter=f; renderDash(); }
 function showAllSched()    { S.showAllSched=true; renderDash(); }
 function showAllArchived() { S.showAllArc=true; renderDash(); }
 
+function showOwedList() {
+  const owedJobs = S.jobs.filter(j => j.Job_Status === 'Completed' && !isPaidJob(j))
+    .sort((a, b) => (b.Completion_Date || '').localeCompare(a.Completion_Date || ''));
+  const total = owedJobs.reduce((s, j) => s + parseMoney(j.Total_Amount), 0);
+  if ($('m-money-t')) $('m-money-t').textContent = '💰 Owed — $' + total.toFixed(2);
+  const body = $('m-money-body');
+  if (!body) return;
+  if (!owedJobs.length) {
+    body.innerHTML = '<div style="text-align:center;padding:24px;color:var(--txt3);font-size:13px;">No unpaid jobs — you\'re all caught up! 🎉</div>';
+  } else {
+    body.innerHTML = owedJobs.map(j => {
+      const c = getCli(j.Client_ID);
+      const t = getJobTotals(j);
+      return `<div class="jr owed" style="cursor:pointer;" onclick="closeMo('m-money');openJobModal('${esc(j.Job_ID)}')">
+        <div class="ji">🔴</div>
+        <div class="jd" style="pointer-events:none;">
+          <div class="jn">${esc(fullN(c))}</div>
+          <div class="jm">${esc(j.Service)} · ${j.Completion_Date ? 'Done ' + fmtD(j.Completion_Date) : 'Completed'}</div>
+        </div>
+        <div class="jr-right" style="pointer-events:none;">
+          <span class="ja" style="color:var(--red);">$${t.total.toFixed(2)}</span>
+        </div>
+      </div>`;
+    }).join('');
+  }
+  showMo('m-money');
+}
+
+function showCollectedList() {
+  const now = new Date();
+  const thisMonth = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0');
+  const allPaid = S.financials.filter(f => f.Status === 'Paid');
+  const paidThisMonth = allPaid.filter(f => String(f.Paid_Date).startsWith(thisMonth));
+  const displayPaid = S.moneyFilter === 'month' ? paidThisMonth : allPaid;
+  const total = displayPaid.reduce((s, f) => s + parseMoney(f.Amount), 0);
+  const label = S.moneyFilter === 'month' ? 'This Month' : 'All Time';
+  if ($('m-money-t')) $('m-money-t').textContent = '✅ Collected (' + label + ') — $' + total.toFixed(2);
+  const body = $('m-money-body');
+  if (!body) return;
+  if (!displayPaid.length) {
+    body.innerHTML = '<div style="text-align:center;padding:24px;color:var(--txt3);font-size:13px;">No payments recorded yet.</div>';
+  } else {
+    // Sort newest first
+    const sorted = [...displayPaid].sort((a, b) => (b.Paid_Date || '').localeCompare(a.Paid_Date || ''));
+    body.innerHTML = sorted.map(f => {
+      const j = getJob(f.Job_ID);
+      const c = getCli(f.Client_ID || j.Client_ID);
+      return `<div style="display:flex;align-items:flex-start;gap:10px;padding:12px;background:var(--green-s);border-radius:var(--rsm);border:1px solid var(--green-b);margin-bottom:8px;">
+        <div class="ji" style="background:rgba(255,255,255,.6);">✅</div>
+        <div style="flex:1;min-width:0;">
+          <div style="font-family:'Nunito',sans-serif;font-size:14px;font-weight:800;color:var(--txt);">${esc(fullN(c))}</div>
+          <div style="font-size:12px;color:var(--txt2);margin-top:2px;">${esc(j.Service || '—')} · ${fmtD(f.Paid_Date)}</div>
+          <div style="font-size:11px;color:var(--txt3);margin-top:2px;">${esc(f.Payment_Method || '—')}</div>
+        </div>
+        <div style="font-family:'Nunito',sans-serif;font-size:15px;font-weight:900;color:var(--green);flex-shrink:0;">$${parseMoney(f.Amount).toFixed(2)}</div>
+      </div>`;
+    }).join('');
+  }
+  showMo('m-money');
+}
 function renderEarnBars() {
   const el=$('earn-bars');if(!el)return;
   const weeks=[];const now=new Date();
