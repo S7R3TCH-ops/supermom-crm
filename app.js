@@ -526,14 +526,21 @@ function showOwedList() {
     body.innerHTML = owedJobs.map(j => {
       const c = getCli(j.Client_ID);
       const t = getJobTotals(j);
+      const isPartial = j.Payment_Status === 'Partial';
+      const prePaid = parseMoney(j.PrePaid_Amount);
+      const bal = isPartial ? Math.max(0, t.total - prePaid) : t.total;
+      const ppPill = isPartial ? `<span class="pill p-pur" style="font-size:9px;">💜 $${prePaid.toFixed(2)} deposit</span>` : '';
       return `<div class="jr owed" style="cursor:pointer;" onclick="closeMo('m-money');openJobModal('${esc(j.Job_ID)}')">
         <div class="ji">🔴</div>
         <div class="jd" style="pointer-events:none;">
           <div class="jn">${esc(fullN(c))}</div>
-          <div class="jm">${esc(j.Service)} · ${j.Completion_Date ? 'Done ' + fmtD(j.Completion_Date) : 'Completed'}</div>
+          <div class="jm">${esc(j.Service)}</div>
+          <div class="jm">${j.Completion_Date ? '✅ Done ' + fmtD(j.Completion_Date) : ''}${j.Scheduled_Date && !j.Completion_Date ? '📅 Sched. ' + fmtD(j.Scheduled_Date) : ''}</div>
+          ${ppPill ? `<div style="margin-top:4px;">${ppPill}</div>` : ''}
         </div>
         <div class="jr-right" style="pointer-events:none;">
-          <span class="ja" style="color:var(--red);">$${t.total.toFixed(2)}</span>
+          <span class="ja" style="color:var(--red);">$${bal.toFixed(2)}</span>
+          ${isPartial ? `<div style="font-size:10px;color:var(--txt3);">of $${t.total.toFixed(2)}</div>` : ''}
         </div>
       </div>`;
     }).join('');
@@ -553,21 +560,44 @@ function showCollectedList() {
   const body = $('m-money-body');
   if (!body) return;
   if (!displayPaid.length) {
-    body.innerHTML = '<div style="text-align:center;padding:24px;color:var(--txt3);font-size:13px;">No payments recorded yet.</div>';
+    body.innerHTML = '<div style="text-align:center;padding:24px;color:var(--txt3);font-size:13px;">No payments recorded' + (S.moneyFilter === 'month' ? ' this month.' : ' yet.') + '</div>';
   } else {
-    // Sort newest first
     const sorted = [...displayPaid].sort((a, b) => (b.Paid_Date || '').localeCompare(a.Paid_Date || ''));
     body.innerHTML = sorted.map(f => {
       const j = getJob(f.Job_ID);
       const c = getCli(f.Client_ID || j.Client_ID);
-      return `<div style="display:flex;align-items:flex-start;gap:10px;padding:12px;background:var(--green-s);border-radius:var(--rsm);border:1px solid var(--green-b);margin-bottom:8px;">
-        <div class="ji" style="background:rgba(255,255,255,.6);">✅</div>
-        <div style="flex:1;min-width:0;">
+      const cid = c.Client_ID || f.Client_ID || j.Client_ID;
+      const isComp = j.Job_Status === 'Completed';
+      const wasPrepay = !isComp && (j.Payment_Status === 'Paid' || j.Payment_Status === 'Partial');
+      const isPartialPre = j.Payment_Status === 'Partial';
+
+      // Status line
+      let statusLine = '';
+      if (isComp && j.Completion_Date) {
+        statusLine = '✅ Completed ' + fmtD(j.Completion_Date);
+      } else if (j.Scheduled_Date) {
+        statusLine = '📅 Scheduled ' + fmtD(j.Scheduled_Date);
+      } else {
+        statusLine = '📋 ' + (j.Job_Status || 'Booked');
+      }
+
+      // Prepaid pill
+      const ppPill = wasPrepay ? `<span class="pill p-pur" style="font-size:9px;">💜 Pre-Paid</span>`
+        : isPartialPre ? `<span class="pill p-pur" style="font-size:9px;">💜 Deposit</span>`
+        : '';
+
+      return `<div style="display:flex;align-items:flex-start;gap:10px;padding:12px;background:var(--green-s);border-radius:var(--rsm);border:1px solid var(--green-b);margin-bottom:8px;cursor:pointer;" onclick="closeMo('m-money');openProfile('${esc(cid)}')">
+        <div class="ji" style="background:rgba(255,255,255,.6);">${wasPrepay || isPartialPre ? '💜' : '✅'}</div>
+        <div style="flex:1;min-width:0;pointer-events:none;">
           <div style="font-family:'Nunito',sans-serif;font-size:14px;font-weight:800;color:var(--txt);">${esc(fullN(c))}</div>
-          <div style="font-size:12px;color:var(--txt2);margin-top:2px;">${esc(j.Service || '—')} · ${fmtD(f.Paid_Date)}</div>
-          <div style="font-size:11px;color:var(--txt3);margin-top:2px;">${esc(f.Payment_Method || '—')}</div>
+          <div style="font-size:12px;color:var(--txt2);margin-top:2px;">${esc(j.Service || '—')}</div>
+          <div style="font-size:11px;color:var(--txt3);margin-top:2px;">💰 Paid ${fmtD(f.Paid_Date)} · ${esc(f.Payment_Method || '—')}</div>
+          <div style="font-size:11px;color:var(--txt3);margin-top:1px;">${statusLine}</div>
+          ${ppPill ? `<div style="margin-top:4px;">${ppPill}</div>` : ''}
         </div>
-        <div style="font-family:'Nunito',sans-serif;font-size:15px;font-weight:900;color:var(--green);flex-shrink:0;">$${parseMoney(f.Amount).toFixed(2)}</div>
+        <div style="flex-shrink:0;text-align:right;pointer-events:none;">
+          <div style="font-family:'Nunito',sans-serif;font-size:15px;font-weight:900;color:var(--green);">$${parseMoney(f.Amount).toFixed(2)}</div>
+        </div>
       </div>`;
     }).join('');
   }
