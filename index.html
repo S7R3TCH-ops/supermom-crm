@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <!--
-  SUPERMOM FOR HIRE — CRM v3.96 (Production Release Testing)
+  SUPERMOM FOR HIRE — CRM v3.91 (Production Release Testing)
 -->
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
@@ -434,8 +434,8 @@ body.modal-open #scroll{overflow:hidden;}
     <button class="tb" id="mf-all" onclick="setMoneyFilter('all')" style="flex:none;padding:10px 16px;min-height:36px;font-size:12px;">All Time</button>
   </div>
   <div class="money-row">
-    <div class="mc red"><div class="mc-lbl">💰 Owed</div><div class="mc-val" id="m-owed">$0</div><div class="mc-sub" id="m-owed-s">0 unpaid</div></div>
-    <div class="mc green"><div class="mc-lbl">✅ Collected</div><div class="mc-val" id="m-paid">$0</div><div class="mc-sub" id="m-paid-s">0 paid</div></div>
+    <div class="mc red" onclick="showOwedList()" style="cursor:pointer;"><div class="mc-lbl">💰 Owed</div><div class="mc-val" id="m-owed">$0</div><div class="mc-sub" id="m-owed-s">0 unpaid</div></div>
+    <div class="mc green" onclick="showCollectedList()" style="cursor:pointer;"><div class="mc-lbl">✅ Collected</div><div class="mc-val" id="m-paid">$0</div><div class="mc-sub" id="m-paid-s">0 paid</div></div>
   </div>
   <div class="card" style="padding:14px;margin-bottom:14px;">
     <div style="font-size:10px;font-weight:800;color:var(--txt3);text-transform:uppercase;letter-spacing:.8px;margin-bottom:2px;">4-Week Earnings</div>
@@ -647,6 +647,11 @@ body.modal-open #scroll{overflow:hidden;}
   <div class="fg"><input class="fi" id="m-ladd-inp" type="text" placeholder="Type new option…"></div>
   <button class="btn b-p mb8" onclick="addListItem()">➕ Add</button>
   <button class="btn b-s" onclick="closeMo('m-ladd')">Cancel</button>
+</div></div>
+<div class="mo" id="m-money" onclick="closeMo('m-money',event)"><div class="msheet">
+  <div class="mhandle"></div><div class="mtitle" id="m-money-t">Details</div>
+  <div id="m-money-body" style="max-height:60vh;overflow-y:auto;"></div>
+  <button class="btn b-s mt8" onclick="closeMo('m-money')">Close</button>
 </div></div>
 
 <script src="app.js"></script>
