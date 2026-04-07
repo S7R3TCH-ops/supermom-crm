@@ -91,7 +91,7 @@ function formatVal(v, type) {
     return isNaN(d.getTime()) ? v : d.toLocaleDateString('en-CA', { month: 'short', day: 'numeric', year: 'numeric' });
   }
   return v;
-}zzzzzzzz
+}
 
 // Fixed escaping to prevent HTML/JS compilation crashes
 function esc(s) {
