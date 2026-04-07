@@ -940,20 +940,29 @@ async function submitClient(thenBook=false) {
 
   const first=$('ac-first')?.value.trim()||'';
   const last=$('ac-last')?.value.trim()||'';
-  if(!first&&!last){
-    showToast('⚠️ Enter a name'); 
-    _isSaving=false; 
-    if(btn){btn.disabled=false;btn.textContent=origText;} 
+  const phone=($('ac-phone')?.value.trim()||'').replace(/\D/g,'');
+  const email=$('ac-email')?.value.trim()||'';
+
+  if(!first){
+    showToast('⚠️ First name is required');
+    _isSaving=false;
+    if(btn){btn.disabled=false;btn.classList.remove('saving');btn.textContent=origText;}
     return;
   }
-  
+  if(!phone&&!email){
+    showToast('⚠️ Phone or email required');
+    _isSaving=false;
+    if(btn){btn.disabled=false;btn.classList.remove('saving');btn.textContent=origText;}
+    return;
+  }
+
   const data={First_Name:first,Last_Name:last,Phone:$('ac-phone')?.value.trim()||'',Phone2:$('ac-phone2')?.value.trim()||'',
-    Email:$('ac-email')?.value.trim()||'',Street:$('ac-street')?.value.trim()||'',
+    Email:email,Street:$('ac-street')?.value.trim()||'',
     City:$('ac-city')?.value.trim()||'Georgetown',Province:'ON',
     Postal_Code:$('ac-postal')?.value.trim().toUpperCase()||'',Status:S.cliStatus,
     Referral_Source:$('ac-ref')?.value||'',Family_Details:$('ac-family')?.value.trim()||'',
     Access_Info:$('ac-access')?.value.trim()||'',Global_Notes:$('ac-notes')?.value.trim()||''};
-    
+
   if(S.editCli){
     const c=S.clients.find(x=>x.Client_ID===S.editCli);if(c)Object.assign(c,data);
     if(!S.isDemo)await gasCall({action:'updateClient',clientId:S.editCli,...data});
@@ -961,16 +970,17 @@ async function submitClient(thenBook=false) {
     goBack();
     if(S.curCli) openProfile(S.curCli);
   }else{
-    const phone=data.Phone.replace(/\D/g,'');
+    // Duplicate check: phone, email, or exact full name — last name alone is too broad
     const dup=S.clients.find(c=>{
-      if(c.Last_Name&&data.Last_Name&&c.Last_Name.toLowerCase()===data.Last_Name.toLowerCase())return true;
       if(phone&&c.Phone&&String(c.Phone).replace(/\D/g,'')===phone)return true;
-      if(data.Email&&c.Email&&c.Email.toLowerCase()===data.Email.toLowerCase())return true;
-      if(data.Street&&c.Street&&data.Street.toLowerCase()===c.Street.toLowerCase())return true;
+      if(email&&c.Email&&c.Email.toLowerCase()===email.toLowerCase())return true;
+      const sameFirst=first&&c.First_Name&&c.First_Name.toLowerCase()===first.toLowerCase();
+      const sameLast=last&&c.Last_Name&&c.Last_Name.toLowerCase()===last.toLowerCase();
+      if(sameFirst&&sameLast)return true;
       return false;
     });
     if(dup){
-      _isSaving=false;if(btn){btn.disabled=false;btn.textContent=origText;}
+      _isSaving=false;if(btn){btn.disabled=false;btn.classList.remove('saving');btn.textContent=origText;}
       showDupWarning(dup,data);return;
     }
     data.Client_ID='C'+Date.now();data.Created_Date=today();S.clients.push(data);
@@ -998,8 +1008,8 @@ function showDupWarning(existing, newData) {
         ${existing.Email?'<br>✉️ '+esc(existing.Email):''}
         ${existing.Street?'<br>📍 '+esc(existing.Street):''}
       </div>
-      <button class="btn b-p mb8" onclick="closeMo('m-del');S.editCli='${esc(existing.Client_ID)}';submitClient(false);">
-        ✏️ Update existing client
+      <button class="btn b-p mb8" onclick="closeMo('m-del');openProfile('${esc(existing.Client_ID)}');">
+        👤 View existing client
       </button>
       <button class="btn b-s mb8" onclick="closeMo('m-del');forceAddClient(${JSON.stringify(newData).replace(/"/g,'"')});">
         ➕ Create as new client anyway
