@@ -344,6 +344,10 @@ window.addEventListener('DOMContentLoaded', () => {
   renderDash();
   loadAllData(); 
   if (typeof calc === 'function') calc();
+
+  window.addEventListener('popstate', () => {
+    if (!_backLock) goBack();
+  });
 });
 
 
@@ -352,7 +356,8 @@ window.addEventListener('DOMContentLoaded', () => {
 // ============================================================================
 
 function navTo(v, push=false) {
-  if(push) S.stack.push(S.view); else S.stack=[];
+  if(push) { S.stack.push(S.view); history.pushState({}, ''); }
+  else { S.stack=[]; history.replaceState({}, ''); }
   document.querySelectorAll('.view').forEach(el=>el.classList.remove('active'));
   document.getElementById('view-'+v).classList.add('active');
   requestAnimationFrame(()=>{document.getElementById('scroll').scrollTop=0;});
@@ -2112,11 +2117,11 @@ function updateHeaderBrand() {
     logoEl.onload = function(){
       const aspect = this.naturalWidth / (this.naturalHeight || 1);
       if(aspect >= 2){
-        this.style.maxWidth='210px'; this.style.maxHeight='54px';
+        this.style.maxWidth='240px'; this.style.maxHeight='64px';
         this.style.width='auto'; this.style.height='auto';
       } else {
-        this.style.maxHeight='54px'; this.style.maxWidth='210px';
-        this.style.height='54px'; this.style.width='auto';
+        this.style.maxHeight='64px'; this.style.maxWidth='240px';
+        this.style.height='64px'; this.style.width='auto';
       }
     };
     logoEl.src = logoSource;
