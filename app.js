@@ -1345,7 +1345,7 @@ function openJobModal(jid) {
         <div class="fg"><label class="fl">Payment Method</label>
           <select class="fs" id="je-pm">${mOpts}</select>
         </div>
-        <button class="btn b-g mb8" onclick="submitQuickPaidFromSummary(this)">💰 Mark as Paid — $${total.toFixed(2)}</button>
+        <button class="btn b-g mb8" onclick="submitQuickPaidFromSummary(this)">💰 Mark as Paid — $${t2.total.toFixed(2)}</button>
       `:''}
       <button class="btn b-s mb8" onclick="openJobModalEdit()">✏️ Edit This Job</button>
       <button class="btn b-r mb8" onclick="confirmDeleteJob()">🗑️ Delete Job</button>
