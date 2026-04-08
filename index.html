@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <!--
-  SUPERMOM FOR HIRE — CRM v3.96 (Production Release Testing)
+  SUPERMOM FOR HIRE — CRM v3.98 (Production Release Testing)
 -->
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
@@ -505,8 +505,8 @@ body.modal-open #scroll{overflow:hidden;}
     <div class="fg"><label class="fl">Access Info (keys, codes)</label><textarea class="ft" id="ac-access" placeholder="Key under mat. Side gate code: 1234."></textarea></div>
     <div class="fg"><label class="fl">General Notes (allergies, preferences)</label><textarea class="ft" id="ac-notes" placeholder="No fragrance products — severe allergy."></textarea></div>
     <div style="background:var(--pink-l);border:2px solid var(--pink-b);border-radius:var(--r);padding:14px;">
-      <button class="btn b-p mb8" onclick="submitClient(false)">💾 Save Client</button>
-      <button class="btn b-s" id="ac-savebook" style="border-color:var(--pink-b);color:var(--pink);" onclick="submitClient(true)">📅 Save + Book a Job →</button>
+      <button class="btn b-p mb8" onclick="submitClient(false, this)">💾 Save Client</button>
+      <button class="btn b-s" id="ac-savebook" style="border-color:var(--pink-b);color:var(--pink);" onclick="submitClient(true, this)">📅 Save + Book a Job →</button>
     </div>
   </div>
 </div>
