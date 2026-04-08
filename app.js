@@ -1,7 +1,7 @@
 // ============================================================================
 // 1. CONSTANTS, GLOBALS & STATE
 // ============================================================================
-const APP_VERSION = '3.96';
+const APP_VERSION = '3.98';
 
 // The URL used when testing outside of Google Apps Script (e.g. GitHub)
 const GAS_URL = "https://script.google.com/macros/s/AKfycbzoqPyDDmpdgNp60xAKrXtClxqOdWxmmwgnH4sK7fM-rcM8LyPoE9Br7Lg6CtI3hCREzw/exec";
@@ -103,6 +103,25 @@ function esc(s) {
 
 // Bulletproof math parser to stop NaN crashes
 const parseMoney = val => parseFloat(String(val || "0").replace(/[^0-9.-]+/g, "")) || 0;
+
+// Phone normalization: strips non-digits, removes leading 1 from 11-digit numbers.
+// Returns 10-digit string, '' if non-standard length (treat as blank), null if too short to be valid.
+function normalizePhone(val) {
+  if(!val) return '';
+  const digits = String(val).replace(/\D/g, '');
+  if(digits.length < 7) return null;
+  if(digits.length === 11 && digits[0] === '1') return digits.slice(1);
+  if(digits.length === 10) return digits;
+  return '';
+}
+
+// Display formatter: converts 10-digit string to (XXX) XXX-XXXX, falls back to raw.
+function formatPhone(val) {
+  if(!val) return '';
+  const d = String(val).replace(/\D/g, '');
+  if(d.length === 10) return `(${d.slice(0,3)}) ${d.slice(3,6)}-${d.slice(6)}`;
+  return val;
+}
 
 const isPaidJob = j => {
   if(j.Payment_Status === 'Paid') return true;
@@ -491,7 +510,7 @@ function renderDash() {
   dsec('d-overdue', 'd-overdue-sec', overdue, 'overdue');
 
   dsec('d-owed', 'd-owed-sec', owedJobs, 'owed');
-  dsec('d-fu', 'd-fu-sec', S.jobs.filter(j => j.Follow_Up === 'Yes' && j.Job_Status !== 'Cancelled'), 'fu');
+  dsec('d-fu', 'd-fu-sec', S.jobs.filter(j => j.Follow_Up === 'Yes' && j.Job_Status !== 'Cancelled' && !(j.Job_Status === 'Completed' && !isPaidJob(j))), 'fu');
   dsec('d-rev', 'd-rev-sec', S.jobs.filter(j => j.Review_Status === 'Pending' && j.Job_Status === 'Completed'), 'review');
 
   const archived = S.jobs.filter(isArchived).sort((a, b) => (b.Completion_Date || '').localeCompare(a.Completion_Date || ''));
@@ -507,7 +526,7 @@ function renderDash() {
         <div class="ji">🟡</div>
         <div class="jd" data-action="open-profile" data-cid="${esc(c.Client_ID)}" style="cursor:pointer;">
           <div class="jn">${esc(fullN(c))}</div>
-          <div class="jm">${esc(c.Phone || 'No phone')} · ${esc(c.Referral_Source || '—')}</div>
+          <div class="jm">${esc(formatPhone(c.Phone) || 'No phone')} · ${esc(c.Referral_Source || '—')}</div>
         </div>
         <button class="btn b-sm b-p" data-action="booklead" data-cid="${esc(c.Client_ID)}">📅 Book</button>
       </div>`).join('');
@@ -652,7 +671,7 @@ function renderCli(q='') {
     return`<div class="cr" data-action="open-profile" data-cid="${esc(c.Client_ID)}">
       <div class="av">${esc(inits(c))}</div>
       <div class="ci"><div class="cn">${esc(fullN(c))}</div>
-        <div class="cs">${esc(c.Phone||c.Email||'No contact')}${nxt?' · Next: '+fmtD(nxt.Scheduled_Date||nxt.Date):''}</div>
+        <div class="cs">${esc(formatPhone(c.Phone)||c.Email||'No contact')}${nxt?' · Next: '+fmtD(nxt.Scheduled_Date||nxt.Date):''}</div>
       </div>${pill}<span style="color:var(--txt3);font-size:22px;flex-shrink:0;">›</span>
     </div>`;
   }).join('');
@@ -681,8 +700,8 @@ function openProfile(cid) {
   
   if($('p-info')) {
     $('p-info').innerHTML=
-      (c.Phone?`<div class="ir"><span class="ii">📞</span><div><div class="il">Phone</div><div class="iv"><a href="tel:${esc(c.Phone)}" style="color:var(--blue);text-decoration:none;font-weight:700;">${esc(c.Phone)}</a></div></div></div>`:'')+
-      (c.Phone2?`<div class="ir"><span class="ii">📱</span><div><div class="il">Alt Phone</div><div class="iv"><a href="tel:${esc(c.Phone2)}" style="color:var(--blue);text-decoration:none;font-weight:700;">${esc(c.Phone2)}</a></div></div></div>`:'')+
+      (c.Phone?`<div class="ir"><span class="ii">📞</span><div><div class="il">Phone</div><div class="iv"><a href="tel:${esc(c.Phone)}" style="color:var(--blue);text-decoration:none;font-weight:700;">${esc(formatPhone(c.Phone))}</a></div></div></div>`:'')+
+      (c.Phone2?`<div class="ir"><span class="ii">📱</span><div><div class="il">Alt Phone</div><div class="iv"><a href="tel:${esc(c.Phone2)}" style="color:var(--blue);text-decoration:none;font-weight:700;">${esc(formatPhone(c.Phone2))}</a></div></div></div>`:'')+
       (c.Email?`<div class="ir"><span class="ii">✉️</span><div><div class="il">Email</div><div class="iv"><a href="mailto:${esc(c.Email)}" style="color:var(--blue);text-decoration:none;font-weight:700;">${esc(c.Email)}</a></div></div></div>`:'')+
       (addr?`<div class="ir"><span class="ii">📍</span><div><div class="il">Address</div><div class="iv"><a href="${mapsUrl}" target="_blank" style="color:var(--blue);text-decoration:underline;font-weight:700;">${esc(addr)}</a></div></div></div>`:'')+
       (c.Family_Details?`<div class="ir"><span class="ii">👨‍👩‍👧</span><div><div class="il">Family & Pets</div><div class="iv">${esc(c.Family_Details)}</div></div></div>`:'')+
@@ -925,26 +944,34 @@ function setCS(v) {
   S.cliStatus=v;['Lead','Active','Inactive'].forEach(s=>{const el=$('s-'+s.toLowerCase());if(el)el.classList.toggle('on',s===v);});
 }
 
-async function submitClient(thenBook=false) {
+async function submitClient(thenBook=false, btn=null) {
   if(_isSaving)return;
   _isSaving = true;
-  
-  const btn = document.activeElement; 
+
   const origText = btn ? btn.textContent : 'Save Client';
-  
-  if(btn && btn.tagName === 'BUTTON') { 
-    btn.disabled = true; 
+
+  if(btn) {
+    btn.disabled = true;
     btn.classList.add('saving');
-    btn.textContent = '⏳ Saving...'; 
+    btn.textContent = '⏳ Saving...';
   }
 
   const first=$('ac-first')?.value.trim()||'';
   const last=$('ac-last')?.value.trim()||'';
-  const phone=($('ac-phone')?.value.trim()||'').replace(/\D/g,'');
+  const rawPhone=$('ac-phone')?.value.trim()||'';
+  const rawPhone2=$('ac-phone2')?.value.trim()||'';
+  const phone=normalizePhone(rawPhone);
+  const phone2=normalizePhone(rawPhone2);
   const email=$('ac-email')?.value.trim()||'';
 
   if(!first){
     showToast('⚠️ First name is required');
+    _isSaving=false;
+    if(btn){btn.disabled=false;btn.classList.remove('saving');btn.textContent=origText;}
+    return;
+  }
+  if(phone===null||(rawPhone2&&phone2===null)){
+    showToast("⚠️ Phone number doesn't look valid");
     _isSaving=false;
     if(btn){btn.disabled=false;btn.classList.remove('saving');btn.textContent=origText;}
     return;
@@ -956,7 +983,7 @@ async function submitClient(thenBook=false) {
     return;
   }
 
-  const data={First_Name:first,Last_Name:last,Phone:$('ac-phone')?.value.trim()||'',Phone2:$('ac-phone2')?.value.trim()||'',
+  const data={First_Name:first,Last_Name:last,Phone:phone||'',Phone2:phone2||'',
     Email:email,Street:$('ac-street')?.value.trim()||'',
     City:$('ac-city')?.value.trim()||'Georgetown',Province:'ON',
     Postal_Code:$('ac-postal')?.value.trim().toUpperCase()||'',Status:S.cliStatus,
@@ -994,7 +1021,7 @@ async function submitClient(thenBook=false) {
     else{navTo('clients');renderCli();}
   }
   _isSaving=false;
-  if(btn){btn.disabled=false;btn.textContent=origText;}
+  if(btn){btn.disabled=false;btn.classList.remove('saving');btn.textContent=origText;}
 }
 
 function showDupWarning(existing, newData) {
@@ -1004,7 +1031,7 @@ function showDupWarning(existing, newData) {
       <div style="font-size:14px;color:var(--txt2);margin-bottom:16px;line-height:1.6;">
         <strong style="color:var(--txt);">Possible duplicate detected</strong><br>
         <strong>${esc(fullN(existing))}</strong> already exists with similar information
-        ${existing.Phone?'<br>📞 '+esc(existing.Phone):''}
+        ${existing.Phone?'<br>📞 '+esc(formatPhone(existing.Phone)):''}
         ${existing.Email?'<br>✉️ '+esc(existing.Email):''}
         ${existing.Street?'<br>📍 '+esc(existing.Street):''}
       </div>
