@@ -1,5 +1,5 @@
 /**
- * SUPERMOM FOR HIRE — Backend Core v4.96
+ * SUPERMOM FOR HIRE — Backend Core v4.98
  * Fixes from audit:
  *   - Added missing: deleteClient, updateClientField, getRowById
  *   - Added missing switch cases: updateClientField, updateList
@@ -234,6 +234,7 @@ function updateJobDetails(p) {
 function markJobComplete(p) {
   // totalAmount always sent by frontend (calculated from actual hours/rate/surcharge/addCost).
   // Trusting frontend value — same pattern as updateJobDetails.
+  const existingJob = getRowById(TABS.JOBS, 'Job_ID', p.jobId);
   const update = {
     Job_Status:            'Completed',
     Completion_Date:       new Date().toISOString().split('T')[0],
@@ -248,7 +249,20 @@ function markJobComplete(p) {
     Total_Amount:          p.totalAmount
   };
   updateRow(TABS.JOBS, 'Job_ID', p.jobId, update);
-  if (p.markPaid) markInvoicePaid({ jobId: p.jobId, method: p.method, ppAmt: p.totalAmount });
+  if (p.markPaid) {
+    markInvoicePaid({ jobId: p.jobId, method: p.method, ppAmt: p.totalAmount });
+  } else if (parseFloat(p.additionalCost) > 0 && existingJob && existingJob.Payment_Status === 'Paid') {
+    // Job was already fully paid; additional cost (e.g. tip) added at completion — record a payment for the delta
+    appendRow(TABS.PAYMENTS, {
+      Payment_ID:     uid('PAY'),
+      Job_ID:         p.jobId,
+      Client_ID:      existingJob.Client_ID,
+      Amount:         parseFloat(p.additionalCost),
+      Payment_Method: existingJob.Payment_Method || 'Cash',
+      Payment_Date:   new Date().toISOString().split('T')[0],
+      Recorded_Date:  new Date().toISOString().split('T')[0]
+    });
+  }
   return { success: true };
 }
 
