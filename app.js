@@ -1,10 +1,9 @@
 // ============================================================================
 // 1. CONSTANTS, GLOBALS & STATE
 // ============================================================================
-const APP_VERSION = '3.98';
+const APP_VERSION = '4.01';
 
-// The URL used when testing outside of Google Apps Script (e.g. GitHub)
-const GAS_URL = "https://script.google.com/macros/s/AKfycbzoqPyDDmpdgNp60xAKrXtClxqOdWxmmwgnH4sK7fM-rcM8LyPoE9Br7Lg6CtI3hCREzw/exec";
+const GAS_URL = "https://script.google.com/macros/s/AKfycbwmhWli_n6kSgG9LiHWJrZGeZ73uvz7XrgO0G24i6MRyCcdFJ65hCmtY5oPPqCMZ9CEEA/exec";
 
 const DL = {
   services: ['Deep Clean','Regular Clean','Move In / Move Out','Post-Renovation','Organization',
@@ -50,6 +49,11 @@ let _tt;
 
 const _pendingDeletes = { jobs: new Set(), clients: new Set() };
 
+try {
+  const saved = JSON.parse(localStorage.getItem('smhq_pending_deletes') || '{}');
+  if (saved.jobs) saved.jobs.forEach(id => _pendingDeletes.jobs.add(id));
+  if (saved.clients) saved.clients.forEach(id => _pendingDeletes.clients.add(id));
+} catch(e) {}
 
 // ============================================================================
 // 2. UTILITY FUNCTIONS
@@ -133,7 +137,16 @@ const isArchived = j => j.Job_Status === 'Completed' && isPaidJob(j) && j.Follow
 
 const $ = id => document.getElementById(id);
 
-function showMo(id) { $(id).classList.add('show'); document.body.classList.add('modal-open'); }
+function showMo(id) {
+  const el = $(id);
+  el.classList.add('show');
+  document.body.classList.add('modal-open');
+  requestAnimationFrame(() => {
+    const inner = el.querySelector('.msheet');
+    if (inner) inner.scrollTop = 0;
+  });
+}
+
 function closeMo(id, e) { if(e && e.target !== $(id)) return; $(id).classList.remove('show'); document.body.classList.remove('modal-open'); }
 
 function showToast(m) {
@@ -154,6 +167,15 @@ function dsec(lid, sid, jobs, type) {
   if (!jobs || jobs.length === 0) { s.style.display = 'none'; return; }
   s.style.display = '';
   l.innerHTML = jobs.map(j => jrHTML(j, type)).join('');
+}
+
+function savePendingDeletes() {
+  try {
+    localStorage.setItem('smhq_pending_deletes', JSON.stringify({
+      jobs: [..._pendingDeletes.jobs],
+      clients: [..._pendingDeletes.clients]
+    }));
+  } catch(e) {}
 }
 
 // ============================================================================
@@ -319,7 +341,7 @@ window.addEventListener('DOMContentLoaded', () => {
   
   // Select text on input focus
   document.addEventListener('focus', e => {
-    if(e.target.matches('input.fi')) { e.target.select(); }
+  if(e.target.matches('input.fi, textarea.fi')) { e.target.select(); }
   }, true);
 
   // Global Event Delegation for buttons/actions
@@ -993,6 +1015,7 @@ async function submitClient(thenBook=false, btn=null) {
   if(S.editCli){
     const c=S.clients.find(x=>x.Client_ID===S.editCli);if(c)Object.assign(c,data);
     if(!S.isDemo)await gasCall({action:'updateClient',clientId:S.editCli,...data});
+    localStorage.removeItem('smhq_cache');
     showToast('✓ Client updated');
     goBack();
     if(S.curCli) openProfile(S.curCli);
@@ -1080,22 +1103,24 @@ async function deleteClient() {
   if (!cid) return;
   closeMo('m-del');
   _pendingDeletes.clients.add(cid);
+  savePendingDeletes();
 
   const clientJobs = S.jobs.filter(j => j.Client_ID === cid);
   clientJobs.forEach(j => _pendingDeletes.jobs.add(j.Job_ID));
-  
+  savePendingDeletes();
+
   S.clients = S.clients.filter(c => c.Client_ID !== cid);
   S.jobs = S.jobs.filter(j => j.Client_ID !== cid);
   S.financials = S.financials.filter(f => f.Client_ID !== cid);
 
-  showToast('🗑️ Deleting client...');
-  navTo('clients'); 
+  navTo('clients');
   renderCli();
 
   if (!S.isDemo) {
     await gasCall({ action: 'deleteClient', clientId: cid });
     try { localStorage.removeItem('smhq_cache'); } catch(e) {}
   }
+  showToast('🗑️ Client deleted');
 }
 
 
@@ -1155,12 +1180,12 @@ function onCliSelect() {
 
 function onSvcChange() {
   const svc=$('bj-svc')?.value;const hint=$('svc-price-hint');
-  if(!svc||!hint){return;}
+  if(!svc||!hint)return;
   const prices=S.biz.service_prices||{};
   if(prices[svc]!==undefined){
     const p=prices[svc];
-    hint.textContent=`💡 Saved price: $${p} flat`;hint.style.display='';
-    setPrice('Flat');if($('bj-flat'))$('bj-flat').value=p;calc();
+    hint.textContent=`💡 Custom rate: $${p}/hr`;hint.style.display='';
+    setPrice('Hourly');
   }else{hint.style.display='none';}
 }
 
@@ -1186,6 +1211,7 @@ function calc() {
   // Use a minimal job shell so getJobTotals can do the math
   const mockJ = {
     Pricing_Type: S.priceType,
+    Hourly_Rate:  (S.biz.service_prices||{})[$('bj-svc')?.value||''] || S.biz.rate || 50,
     Flat_Rate:    $('bj-flat')?.value || '0',
     Surcharge:    $('bj-sur')?.value  || '0',
     Additional_Cost: '0',
@@ -1265,6 +1291,7 @@ async function submitJob() {
   // Build a shell job so getJobTotals does the math consistently
   const mockBook = {
     Pricing_Type:    S.priceType,
+    Hourly_Rate:     (S.biz.service_prices||{})[$('bj-svc')?.value||''] || S.biz.rate || 50,
     Flat_Rate:       $('bj-flat')?.value || '0',
     Estimated_Hours: $('bj-hrs')?.value  || '0',
     Surcharge:       $('bj-sur')?.value  || '0',
@@ -1275,7 +1302,7 @@ async function submitJob() {
   const data={Job_ID:'J'+Date.now(),Client_ID:cid,Service:svc,Scheduled_Date:date,Completion_Date:'',Time:time,
     Pricing_Type:S.priceType,Estimated_Hours:S.priceType==='Hourly'?($('bj-hrs')?.value||'2'):'',
     Flat_Rate:S.priceType==='Flat'?($('bj-flat')?.value||''):'',Surcharge:String(bt.sur),
-    Hourly_Rate:S.priceType==='Hourly'?(S.biz.rate||50):'',
+    Hourly_Rate:S.priceType==='Hourly'?((S.biz.service_prices||{})[$('bj-svc')?.value||'']||S.biz.rate||50):'',
     Subtotal:bt.sub.toFixed(2),HST_Rate:bt.tRate,HST_Amount:bt.hst.toFixed(2),Total_Amount:bt.total.toFixed(2),
     Job_Status:'Scheduled',Follow_Up:'No',
     Scheduling_Type:schedType==='hard'?'Hard Date':schedType==='asap'?'ASAP':'By Date',
@@ -1285,8 +1312,7 @@ async function submitJob() {
     
   S.jobs.push(data);
   const c=S.clients.find(x=>x.Client_ID===cid);if(c&&c.Status==='Lead')c.Status='Active';
-  showToast('📅 Job booked!');
-  
+
   if(S.stack.includes('add-client')){S.stack=[];openProfile(cid);}
   else if(S.stack.includes('profile')){goBack();openProfile(cid);}
   else{goBack();renderDash();}
@@ -1302,10 +1328,13 @@ async function submitJob() {
         if(idx!==-1)S.jobs[idx].Job_ID=r.Job_ID;
       }
       if(!r||!r.success) showToast('⚠️ Job may not have saved — check connection');
+      else showToast('📅 Job booked!');
     } catch(e) {
       showToast('⚠️ Job save failed — please retry');
     }
     try { localStorage.removeItem('smhq_cache'); } catch(e) {}
+  } else {
+    showToast('📅 Job booked!');
   }
 }
 
@@ -1574,7 +1603,7 @@ async function submitJobEdit(btn, markPaid = false) {
   }
 }
 
-function deleteJob() {
+async function deleteJob() {
   const jid = S.jobModal;
   if (!jid) return;
 
@@ -1582,18 +1611,19 @@ function deleteJob() {
   closeMo('m-job');
 
   _pendingDeletes.jobs.add(jid);
+  savePendingDeletes();
 
   S.jobs = S.jobs.filter(x => x.Job_ID !== jid);
   S.financials = S.financials.filter(x => x.Job_ID !== jid);
 
-  showToast('🗑️ Deleting job...');
   if (S.view === 'dashboard') renderDash();
   else if (S.view === 'profile') renderProfileJobs();
 
   if (!S.isDemo) {
-    gasCall({ action: 'deleteJob', jobId: jid });
+    await gasCall({ action: 'deleteJob', jobId: jid });
     try { localStorage.removeItem('smhq_cache'); } catch(e) {}
   }
+  showToast('🗑️ Job deleted');
 }
 
 function confirmDeleteJob() {
@@ -1751,8 +1781,18 @@ async function submitQuickPaid(btn) {
   if(inv){inv.Status='Paid';inv.Payment_Method=method;inv.Paid_Date=tod;}
   else S.financials.push({Invoice_ID:'INV'+Date.now(),Job_ID:jid,Client_ID:j.Client_ID,Amount:j.Total_Amount,Status:'Paid',Payment_Method:method,Paid_Date:tod});
   closeMo('m-qpaid');
-  if(!S.isDemo)await gasCall({action:'markInvoicePaid',jobId:jid,method,ppReason:''});
-  refreshData();showToast('💰 Payment recorded — $'+parseMoney(j.Total_Amount).toFixed(2));
+  if(!S.isDemo){
+    try{
+      await gasCall({action:'markInvoicePaid',jobId:jid,method,ppReason:''});
+      try{localStorage.removeItem('smhq_cache');}catch(e){}
+    }catch(e){
+      showToast('⚠️ Payment save failed — please retry');
+      _isSaving=false;if(btn){btn.disabled=false;btn.textContent='✅ Confirm Payment';}
+      return;
+    }
+  }
+  refreshData();
+  showToast('💰 Payment recorded — $'+parseMoney(j.Total_Amount).toFixed(2));
   _isSaving=false;
 }
 
@@ -2184,14 +2224,14 @@ function removeLogo() {
   showToast('✓ Logo removed — tap Save');
 }
 
-function saveBizConfig() {
+async function saveBizConfig() {
   S.biz.biz = $('cfg-biz').value.trim();
   S.biz.owner = $('cfg-owner').value.trim();
   S.biz.rate = parseFloat($('cfg-rate').value) || 50;
   S.biz.hst_num = $('cfg-hst').value.trim();
-  
+
   if(!S.isDemo) {
-    gasCall({
+    await gasCall({
       action: 'updateBizConfig',
       biz: S.biz.biz,
       owner: S.biz.owner,
@@ -2204,7 +2244,7 @@ function saveBizConfig() {
   }
   localStorage.setItem('smhq_biz', JSON.stringify(S.biz));
   showToast('✓ Settings saved');
-  calc(); 
+  calc();
 }
 
 function renderAdmin() {
@@ -2224,25 +2264,26 @@ function renderAdmin() {
           <button class="btn b-xs b-r ladmin" data-ladmin="del" data-lk="${k}" data-li="${i}">✕</button>
         </div>
       </div>`).join('')}
+      <div style="font-size:11px;color:var(--txt3);margin-top:4px;">✓ Changes to this list save automatically</div>
     </div>`).join('');
   renderSvcPrices();
 }
 
 function openLAdd(k) { S.listMeta={k,i:-1}; if($('m-ladd-t')) $('m-ladd-t').textContent='Add to '+k.replace('_',' '); if($('m-ladd-inp')) $('m-ladd-inp').value=''; showMo('m-ladd'); }
 
-function addListItem() {
+async function addListItem() {
   const v=$('m-ladd-inp')?.value.trim()||'';if(!v){showToast('⚠️ Enter a value');return;}
   const k=S.listMeta.k;S.lists[k]=[...(S.lists[k]||[]),v];
-  if(!S.isDemo)gasCall({action:'updateList',listKey:k,list:S.lists[k]});
+  if(!S.isDemo)await gasCall({action:'updateList',listKey:k,list:S.lists[k]});
   closeMo('m-ladd');renderAdmin();popLists();showToast('✓ Added');
 }
 
 function openLEdit(k,i) { S.listMeta={k,i}; if($('m-ledit-t')) $('m-ledit-t').textContent='Edit Item'; if($('m-ledit-inp')) $('m-ledit-inp').value=gl(k)[i]||''; showMo('m-ledit'); }
 
-function saveListItem() {
+async function saveListItem() {
   const v=$('m-ledit-inp')?.value.trim()||'';if(!v){showToast('⚠️ Enter a value');return;}
   const{k,i}=S.listMeta;const l=gl(k);l[i]=v;S.lists[k]=l;
-  if(!S.isDemo)gasCall({action:'updateList',listKey:k,list:l});
+  if(!S.isDemo)await gasCall({action:'updateList',listKey:k,list:l});
   closeMo('m-ledit');renderAdmin();popLists();showToast('✓ Saved');
 }
 
@@ -2261,8 +2302,9 @@ function renderSvcPrices() {
       <div style="display:flex;align-items:center;gap:8px;flex:1;min-width:140px;">
         <span style="font-size:13px;color:var(--txt2);font-weight:700;">$</span>
         <input class="fi" type="text" inputmode="decimal" pattern="[0-9\.]*" style="flex:1;min-height:40px;font-size:14px;padding:8px 12px;"
-          placeholder="Hourly default" value="${prices[s]!==undefined?prices[s]:''}"
+          placeholder="e.g. 45 ($/hr)" value="${prices[s]!==undefined?prices[s]:''}"
           oninput="setSvcPrice('${esc(s.replace(/'/g,"\\'"))}',this.value)">
+        <span style="font-size:13px;color:var(--txt2);font-weight:700;">/hr</span>
         ${prices[s]!==undefined?`<button class="btn b-xs b-r" style="min-height:36px;width:36px;" onclick="clearSvcPrice('${esc(s.replace(/'/g,"\\'"))}')">✕</button>`:''}
       </div>
     </div>`).join('');
@@ -2279,6 +2321,10 @@ function clearSvcPrice(svc) {
   if(S.biz.service_prices)delete S.biz.service_prices[svc];
   try{localStorage.setItem('smhq_biz',JSON.stringify(S.biz));}catch(e){}
   renderSvcPrices();
+}
+
+async function saveSvcRates() {
+  await saveBizConfig();
 }
 
 function setTaxToggle(val) {
