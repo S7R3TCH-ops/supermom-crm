@@ -2331,4 +2331,16 @@ function setSvcPrice(svc,val) {
 
 function clearSvcPrice(svc) {
   if(S.biz.service_prices)delete S.biz.service_prices[svc];
- 
+  try{localStorage.setItem('smhq_biz',JSON.stringify(S.biz));}catch(e){}
+  renderSvcPrices();
+}
+
+async function saveSvcRates() {
+  await saveBizConfig();
+}
+
+function setTaxToggle(val) {
+  S.biz.tax_enabled = val;
+  if($('tax-on')) $('tax-on').classList.toggle('on', val === 'TRUE');
+  if($('tax-off')) $('tax-off').classList.toggle('on', val === 'FALSE');
+}
