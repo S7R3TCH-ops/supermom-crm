@@ -1,7 +1,7 @@
 // ============================================================================
 // 1. CONSTANTS, GLOBALS & STATE
 // ============================================================================
-const APP_VERSION = '4.01';
+const APP_VERSION = '4.02';
 
 const GAS_URL = "https://script.google.com/macros/s/AKfycbwmhWli_n6kSgG9LiHWJrZGeZ73uvz7XrgO0G24i6MRyCcdFJ65hCmtY5oPPqCMZ9CEEA/exec";
 
@@ -263,17 +263,20 @@ async function loadAllData() {
     }
   } catch(e){}
   
-  const r = await gasCall({ action: 'getAllData' }); 
+  const r = await gasCall({ action: 'getAllData' });
   if(r.success){
     S.clients = (r.clients || []).filter(c => !_pendingDeletes.clients.has(c.Client_ID));
     S.jobs = (r.jobs || []).filter(j => !_pendingDeletes.jobs.has(j.Job_ID));
-    S.financials = r.financials || []; 
+    S.financials = r.financials || [];
     S.lists = r.lists || S.lists;
     if(r.biz) S.biz = Object.assign(S.biz, r.biz);
-    
+
     updateHeaderBrand();
     refreshAll();
     localStorage.setItem('smhq_cache', JSON.stringify({clients:S.clients, jobs:S.jobs, financials:S.financials, lists:S.lists}));
+    drainOfflineQueue();
+  } else {
+    showToast('⚠️ Couldn\'t sync — showing saved data');
   }
 }
 
@@ -1313,6 +1316,9 @@ async function submitJob() {
   S.jobs.push(data);
   const c=S.clients.find(x=>x.Client_ID===cid);if(c&&c.Status==='Lead')c.Status='Active';
 
+  // Persist new job to cache immediately — survives a reload even if the GAS write hasn't landed yet
+  try { localStorage.setItem('smhq_cache', JSON.stringify({clients:S.clients, jobs:S.jobs, financials:S.financials, lists:S.lists})); } catch(e) {}
+
   if(S.stack.includes('add-client')){S.stack=[];openProfile(cid);}
   else if(S.stack.includes('profile')){goBack();openProfile(cid);}
   else{goBack();renderDash();}
@@ -1327,12 +1333,18 @@ async function submitJob() {
         const idx=S.jobs.findIndex(x=>x.Job_ID===data.Job_ID);
         if(idx!==-1)S.jobs[idx].Job_ID=r.Job_ID;
       }
-      if(!r||!r.success) showToast('⚠️ Job may not have saved — check connection');
-      else showToast('📅 Job booked!');
+      if(!r||!r.success){
+        // Queue for retry on next successful load
+        try{const q=JSON.parse(localStorage.getItem('smhq_queue')||'[]');q.push({payload:{action:'addJob',...data}});localStorage.setItem('smhq_queue',JSON.stringify(q));}catch(e){}
+        showToast('⚠️ Offline — job queued, will sync on next open');
+      } else {
+        localStorage.removeItem('smhq_cache'); // success — clear so next loadAllData pulls fresh GAS data
+        showToast('📅 Job booked!');
+      }
     } catch(e) {
-      showToast('⚠️ Job save failed — please retry');
+      try{const q=JSON.parse(localStorage.getItem('smhq_queue')||'[]');q.push({payload:{action:'addJob',...data}});localStorage.setItem('smhq_queue',JSON.stringify(q));}catch(e2){}
+      showToast('⚠️ Offline — job queued, will sync on next open');
     }
-    try { localStorage.removeItem('smhq_cache'); } catch(e) {}
   } else {
     showToast('📅 Job booked!');
   }
@@ -2319,16 +2331,4 @@ function setSvcPrice(svc,val) {
 
 function clearSvcPrice(svc) {
   if(S.biz.service_prices)delete S.biz.service_prices[svc];
-  try{localStorage.setItem('smhq_biz',JSON.stringify(S.biz));}catch(e){}
-  renderSvcPrices();
-}
-
-async function saveSvcRates() {
-  await saveBizConfig();
-}
-
-function setTaxToggle(val) {
-  S.biz.tax_enabled = val;
-  if($('tax-on')) $('tax-on').classList.toggle('on', val === 'TRUE');
-  if($('tax-off')) $('tax-off').classList.toggle('on', val === 'FALSE');
-}
+ 
