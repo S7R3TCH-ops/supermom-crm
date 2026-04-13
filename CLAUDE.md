@@ -3,6 +3,13 @@
 ## What This Is
 **Supermom for Hire (SMHQ)** — a mobile-first CRM web app for Sandra, a solo home-services business owner in Georgetown, Ontario. Manages jobs, clients, financials, and scheduling. Built by Joel (developer), intended to scale as a managed service product for similar businesses.
 
+## Repository & Branching
+- **Unified Repository:** Consolidates legacy `supermom-crm` and `supermom-sandbox`.
+- **Branches:**
+  - `main`: Production-ready code (synced to `origin/main`).
+  - `sandbox`: Development and experimental sandbox (synced to `origin/sandbox`).
+- **Workflow:** Use `git checkout sandbox` for development and `git checkout main` for production releases.
+
 ## Stack
 - **Frontend:** Vanilla HTML/CSS/JS — `index.html` + `app.js` (no frameworks)
 - **Backend:** Google Apps Script (`code.js`) — pure data API, GET requests only
