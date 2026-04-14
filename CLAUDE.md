@@ -18,6 +18,25 @@
 - **GAS Deployment URL:** `https://script.google.com/macros/s/AKfycbzoqPyDDmpdgNp60xAKrXtClxqOdWxmmwgnH4sK7fM-rcM8LyPoE9Br7Lg6CtI3hCREzw/exec`
 - **Logo:** `https://lh3.googleusercontent.com/d/1vYV_0VFk2MF8QrZyQ77BKyx4hnpuDqSb`
 
+## Prerequisites & Setup Status
+
+### One-Time System Requirements
+| Tool | Status | Notes |
+|------|--------|-------|
+| Node.js + npm | ✅ Installed | Required for clasp |
+| `@google/clasp` | ✅ Installed | `npm install` done |
+| clasp authenticated | ✅ Done | `npm run login` completed |
+| Google Apps Script API | ✅ Enabled | script.google.com/home/usersettings |
+| `.clasp.json` | ✅ Created | Script ID: `1N0wTqDEKihPP...` (local only, gitignored) |
+| `appsscript.json` | ✅ Created | Manifest file, committed to repo |
+| Git + GitHub access | ✅ Working | Pushing to `s7r3tch-ops/supermom-crm` |
+
+### If clasp stops working on a new machine
+1. `npm install` — reinstall clasp
+2. `npm run login` — re-authenticate Google account
+3. Enable Apps Script API at script.google.com/home/usersettings
+4. Recreate `.clasp.json` with Script ID `1N0wTqDEKihPP6cR0yGJZYaSqViRQgkZMnufIb0UhmhVqAC-3QB6Hxp9R`
+
 ## Deploy Checklist
 1. Bump version in modified file(s) — `app.js`, `index.html`, `code.js`
 2. Update `## Current Versions` in this file
@@ -186,11 +205,22 @@ Handles both full and partial prepayments:
 - Global event delegation on `#scroll` for all `[data-action]` buttons
 - Prepaid pills show on ALL non-completed jobs (ASAP, scheduled, by-date)
 
-## Known Remaining Items
-- **Persist `_pendingDeletes` to localStorage** — prevents ghost data on refresh-during-delete
-- **Invoice generation** — planned feature, not yet built
-- **Calendar sync** — fires via `_syncCalendar` flag pattern outside script lock
-- **Worker assignment** — columns exist in schema, not yet implemented in UI
+## To-Do List
+_Updated at the end of every session. Check this first when starting work._
+
+### Bugs
+- [ ] **Persist `_pendingDeletes` to localStorage** — ghost data appears on refresh-during-delete (HIGH)
+
+### Pending Audits
+- [ ] **`parseMoney` vs `forceNum`** — may be redundant with `getJobTotals`. Audit before changing anything.
+
+### Features
+- [ ] **Invoice generation** — planned, not yet built
+- [ ] **Calendar sync** — `_syncCalendar` flag pattern exists, needs end-to-end testing
+- [ ] **Worker assignment** — schema exists (06_WORKERS + Jobs.AL), UI not yet built
+
+### Infrastructure
+- [ ] **`npm run deploy` end-to-end test** — clasp push working, full deploy not yet verified
 
 ## Version Bumping — MANDATORY
 Every time `app.js` is modified, increment its version number at the top of the file AND update `## Current Versions` in this file.
@@ -199,10 +229,11 @@ Every time `code.js` is modified, increment its version number at the top of the
 Never deliver a modified file without bumping its version. No exceptions.
 
 ## End-of-Session Reminder — MANDATORY
-At the end of every session where `app.js` or `code.js` were modified, remind Joel:
-1. Run `npm run deploy` if `code.js` was changed (pushes to GAS + creates new version)
-2. Push `index.html` + `app.js` to `main` when ready to go live
-3. Re-upload `app.js` and `code.js` to the Claude project so the main Claude chat stays in sync
+At the end of every session, always:
+1. Update the **To-Do List** — check off completed items, add anything new that came up
+2. Run `npm run deploy` if `code.js` was changed (pushes to GAS + creates new version)
+3. Push `index.html` + `app.js` to `main` when ready to go live
+4. Re-upload `app.js` and `code.js` to the Claude project so the main Claude chat stays in sync
 
 ## Working Style
 - One fix at a time, verify before moving on

@@ -1,3 +1,4 @@
-# Only push code.js to Google Apps Script
+# Only push code.js and the required manifest to Google Apps Script
 **
 !code.js
+!appsscript.json
