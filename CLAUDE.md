@@ -22,7 +22,7 @@
 1. Bump version in modified file(s) — `app.js`, `index.html`, `code.js`
 2. Update `## Current Versions` in this file
 3. Push `index.html` + `app.js` to `main` branch → auto-deploys to GitHub Pages
-4. For `code.js` changes: paste into GAS editor → Save → Deploy new version
+4. For `code.js` changes: run `npm run deploy` (pushes `code.js` to GAS and creates a new version)
 5. Remind Joel: re-upload `app.js` and `code.js` to the Claude project (main chat sync)
 
 ### Branch Note
@@ -200,7 +200,9 @@ Never deliver a modified file without bumping its version. No exceptions.
 
 ## End-of-Session Reminder — MANDATORY
 At the end of every session where `app.js` or `code.js` were modified, remind Joel:
-> "Re-upload app.js and code.js to the Claude project so the main Claude chat stays in sync with the current code."
+1. Run `npm run deploy` if `code.js` was changed (pushes to GAS + creates new version)
+2. Push `index.html` + `app.js` to `main` when ready to go live
+3. Re-upload `app.js` and `code.js` to the Claude project so the main Claude chat stays in sync
 
 ## Working Style
 - One fix at a time, verify before moving on
