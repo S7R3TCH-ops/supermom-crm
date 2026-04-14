@@ -4,4 +4,5 @@ node_modules/
 
 # Clasp
 .clasprc.json
+.clasp.json
 

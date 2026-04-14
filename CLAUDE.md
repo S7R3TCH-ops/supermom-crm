@@ -18,9 +18,21 @@
 - **GAS Deployment URL:** `https://script.google.com/macros/s/AKfycbzoqPyDDmpdgNp60xAKrXtClxqOdWxmmwgnH4sK7fM-rcM8LyPoE9Br7Lg6CtI3hCREzw/exec`
 - **Logo:** `https://lh3.googleusercontent.com/d/1vYV_0VFk2MF8QrZyQ77BKyx4hnpuDqSb`
 
+## Deploy Checklist
+1. Bump version in modified file(s) — `app.js`, `index.html`, `code.js`
+2. Update `## Current Versions` in this file
+3. Push `index.html` + `app.js` to `main` branch → auto-deploys to GitHub Pages
+4. For `code.js` changes: paste into GAS editor → Save → Deploy new version
+5. Remind Joel: re-upload `app.js` and `code.js` to the Claude project (main chat sync)
+
+### Branch Note
+- Work on `sandbox` branch for development
+- Merge to `main` only for production releases
+- `code.js` lives locally in this repo (unlike the legacy `supermom-crm` where it was GAS-only)
+
 ## Current Versions
-- `app.js` → v3.96
-- `code.js` → v4.96
+- `app.js` → v4.02
+- `code.js` → v4.98
 - `index.html` → synced with app.js
 
 ## Architecture Rules — DO NOT VIOLATE
@@ -179,6 +191,16 @@ Handles both full and partial prepayments:
 - **Invoice generation** — planned feature, not yet built
 - **Calendar sync** — fires via `_syncCalendar` flag pattern outside script lock
 - **Worker assignment** — columns exist in schema, not yet implemented in UI
+
+## Version Bumping — MANDATORY
+Every time `app.js` is modified, increment its version number at the top of the file AND update `## Current Versions` in this file.
+Every time `code.js` is modified, increment its version number at the top of the file AND update `## Current Versions` in this file.
+`index.html` version tracks `app.js` — update it whenever `app.js` is modified.
+Never deliver a modified file without bumping its version. No exceptions.
+
+## End-of-Session Reminder — MANDATORY
+At the end of every session where `app.js` or `code.js` were modified, remind Joel:
+> "Re-upload app.js and code.js to the Claude project so the main Claude chat stays in sync with the current code."
 
 ## Working Style
 - One fix at a time, verify before moving on
