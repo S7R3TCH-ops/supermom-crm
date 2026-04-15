@@ -1,7 +1,7 @@
 // ============================================================================
 // 1. CONSTANTS, GLOBALS & STATE
 // ============================================================================
-const APP_VERSION = '4.02';
+const APP_VERSION = '4.05';
 
 const GAS_URL = "https://script.google.com/macros/s/AKfycbwmhWli_n6kSgG9LiHWJrZGeZ73uvz7XrgO0G24i6MRyCcdFJ65hCmtY5oPPqCMZ9CEEA/exec";
 
@@ -38,7 +38,7 @@ let S = {
   cliStatus: 'Lead', priceType: 'Hourly', schedType: 'hard',
   jobModal: null, followUp: 'No', payNow: false, reqRev: false,
   listMeta: null, notesMeta: null, isDemo: false, 
-  showAllSched: false, showAllArc: false, moneyFilter: 'month',
+  showAllSched: false, showAllArc: false, showAllOwed: false, showAllUnschd: false, showAllOver: false, showAllFu: false, showAllRev: false, showAllLead: false, moneyFilter: 'month',
   profileJobFilter: 'all'
 };
 
@@ -62,6 +62,7 @@ try {
 const taxRate = () => String(S.biz.tax_enabled).toUpperCase() === 'TRUE' ? 0.13 : 0;
 const hourlyRate = () => S.biz.rate || 50;
 const today = () => { const d = new Date(); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); };
+const shortId = () => Math.random().toString(36).slice(2, 8);
 
 const getCli = id => S.clients.find(c => c.Client_ID === id) || {};
 const getJob = id => S.jobs.find(j => j.Job_ID === id) || {};
@@ -71,17 +72,31 @@ const gl = k => S.lists[k] || DL[k] || [];
 const fullN = c => ((c.First_Name || '') + ' ' + (c.Last_Name || '')).trim() || 'Unknown';
 const inits = c => (((c.First_Name || '')[0] || '') + ((c.Last_Name || '')[0] || '')).toUpperCase() || '??';
 
-const fmtD = d => { if(!d) return '—'; return new Date(d + 'T00:00:00').toLocaleDateString('en-CA', { month: 'short', day: 'numeric' }); };
+const fmtD = d => { if(!d) return '—'; return new Date(d + 'T00:00:00').toLocaleDateString('en-CA', { weekday: 'short', month: 'short', day: 'numeric' }); };
 const fmtDFull = d => { if(!d) return '—'; return new Date(d + 'T00:00:00').toLocaleDateString('en-CA', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' }); };
 const fmtT = t => {
   if(!t || t.includes('1899')) return '';
   try {
     const [h, m] = t.split(':');
-    if(h === undefined || m === undefined) return t; 
+    if(h === undefined || m === undefined) return t;
     const hr = parseInt(h);
     return `${hr % 12 || 12}:${m}${hr >= 12 ? 'pm' : 'am'}`;
   } catch { return t; }
 };
+
+function fmtTRange(j) {
+  const hrs = parseFloat(j.Estimated_Hours || 1);
+  if(j.Time && !j.Time.includes('1899')) {
+    try {
+      const [h, m] = j.Time.split(':');
+      const start = new Date(); start.setHours(parseInt(h), parseInt(m), 0, 0);
+      const end = new Date(start.getTime() + hrs * 3600000);
+      const fmt = d => { const hr=d.getHours(),mn=d.getMinutes(); return `${hr%12||12}${mn?':'+String(mn).padStart(2,'0'):''}${hr>=12?'pm':'am'}`; };
+      return fmt(start) + ' → ' + fmt(end);
+    } catch(e) {}
+  }
+  return '~' + hrs + ' hr' + (hrs !== 1 ? 's' : '');
+}
 
 function formatVal(v, type) {
   if (v === null || v === undefined || v === '') return '';
@@ -139,6 +154,7 @@ const $ = id => document.getElementById(id);
 
 function showMo(id) {
   const el = $(id);
+  if (!el) return;
   el.classList.add('show');
   document.body.classList.add('modal-open');
   requestAnimationFrame(() => {
@@ -147,7 +163,7 @@ function showMo(id) {
   });
 }
 
-function closeMo(id, e) { if(e && e.target !== $(id)) return; $(id).classList.remove('show'); document.body.classList.remove('modal-open'); }
+function closeMo(id, e) { const el=$(id); if(!el)return; if(e && e.target !== el) return; el.classList.remove('show'); document.body.classList.remove('modal-open'); }
 
 function showToast(m) {
   const t = $('toast');
@@ -161,12 +177,16 @@ function row(label, sub, val, color) {
   return `<div style="display:flex;justify-content:space-between;margin-bottom:4px;${color ? 'color:' + color + ';' : ''}"><span>${label}${sub ? ` <span style="color:var(--txt3);font-size:11px;">${sub}</span>` : ''}</span><span>${val}</span></div>`;
 }
 
-function dsec(lid, sid, jobs, type) {
+function dsec(lid, sid, jobs, type, cap, showAll, toggleFn) {
   const l = $(lid); const s = $(sid);
   if (!l || !s) return;
-  if (!jobs || jobs.length === 0) { s.style.display = 'none'; return; }
-  s.style.display = '';
-  l.innerHTML = jobs.map(j => jrHTML(j, type)).join('');
+  if (!jobs || jobs.length === 0) { s.classList.add('hidden'); return; }
+  s.classList.remove('hidden');
+  const display = (cap && !showAll) ? jobs.slice(0, cap) : jobs;
+  const overflow = cap ? Math.max(0, jobs.length - display.length) : 0;
+  const moreHtml = overflow > 0 && toggleFn
+    ? `<div class="show-more-link" onclick="${toggleFn}()">+ ${overflow} more</div>` : '';
+  l.innerHTML = display.map(j => jrHTML(j, type)).join('') + moreHtml;
 }
 
 function savePendingDeletes() {
@@ -273,42 +293,56 @@ async function loadAllData() {
 
     updateHeaderBrand();
     refreshAll();
-    localStorage.setItem('smhq_cache', JSON.stringify({clients:S.clients, jobs:S.jobs, financials:S.financials, lists:S.lists}));
-    drainOfflineQueue();
+    cacheWrite();
+    await drainOfflineQueue(true);
   } else {
     showToast('⚠️ Couldn\'t sync — showing saved data');
   }
 }
 
-async function drainOfflineQueue() {
+// fromLoad=true skips the post-drain loadAllData re-sync (caller is already inside one)
+async function drainOfflineQueue(fromLoad = false) {
   try{
     const raw = localStorage.getItem('smhq_queue');
     if(!raw) return;
     const q = JSON.parse(raw);
     if(!q.length) return;
-    
+
     localStorage.removeItem('smhq_queue');
     const synced = q.length;
     showToast('🔄 Syncing '+synced+' offline change'+(synced!==1?'s':'')+'…');
-    const failed = [];
-    
-    for(const item of q){
-      try{
-        const r = await gasCall(item.payload, true);
-        if(r.offline || !r.success) failed.push(item);
-      } catch(e){
-        failed.push(item);
-      }
-    }
-    
+
+    // Fire all queued writes in parallel — no ordering dependency between them
+    const results = await Promise.allSettled(q.map(item => gasCall(item.payload, true)));
+    const failed = q.filter((_, i) => {
+      const res = results[i];
+      return res.status==='rejected' || res.value?.offline || !res.value?.success;
+    });
+
     const currentQueue = JSON.parse(localStorage.getItem('smhq_queue')||'[]');
     if (failed.length || currentQueue.length) {
       localStorage.setItem('smhq_queue',JSON.stringify([...failed,...currentQueue]));
     }
-    
-    if(!failed.length) showToast('✅ '+synced+' offline change'+(synced!==1?'s':'')+' synced');
-    else showToast('⚠️ '+failed.length+' change'+(failed.length!==1?'s':'')+' still pending');
-  }catch(e){}
+
+    if(!failed.length){
+      showToast('✅ '+synced+' offline change'+(synced!==1?'s':'')+' synced');
+      // Re-sync from GAS to pull canonical IDs for queued adds
+      if(!fromLoad) await loadAllData();
+    } else {
+      showToast('⚠️ '+failed.length+' change'+(failed.length!==1?'s':'')+' still pending');
+    }
+  }catch(e){ console.warn('drainOfflineQueue error:', e); }
+}
+
+// ── Cache helpers ─────────────────────────────────────────────────────────────
+function cacheWrite() {
+  try { localStorage.setItem('smhq_cache', JSON.stringify({clients:S.clients, jobs:S.jobs, financials:S.financials, lists:S.lists})); } catch(e) {}
+}
+function cacheInvalidate() {
+  try { localStorage.removeItem('smhq_cache'); } catch(e) {}
+}
+function queueRequest(payload) {
+  try { const q=JSON.parse(localStorage.getItem('smhq_queue')||'[]'); q.push({payload}); localStorage.setItem('smhq_queue', JSON.stringify(q)); } catch(e) {}
 }
 
 function loadDemo() {
@@ -512,11 +546,16 @@ function renderDash() {
       const c = getCli(j.Client_ID);
       const pd = j._pastDue;
       const isUpNext = !pd && j.Job_ID === upNextId;
+      const hasTime = j.Time && !j.Time.includes('1899');
+      const timeRange = hasTime ? fmtTRange(j) : '';
+      const hrs = parseFloat(j.Estimated_Hours || 1);
+      const hrsNote = hasTime ? timeRange : '~' + hrs + ' hr' + (hrs !== 1 ? 's' : '');
       return `<div class="today-job" data-action="open-job" data-jid="${esc(j.Job_ID)}" style="${pd?'border-left:3px solid var(--orange);background:rgba(192,88,0,.07);':isUpNext?'border-left:3px solid var(--pink);':''}">
-        <div class="tj-time" style="${pd?'color:var(--orange);':isUpNext?'color:var(--pink);font-weight:900;':''}">${j.Time && !j.Time.includes('1899') ? fmtT(j.Time) : 'All day'}</div>
+        <div class="tj-time" style="${pd?'color:var(--orange);':isUpNext?'color:var(--pink);font-weight:900;':''}">${hasTime ? fmtT(j.Time) : '—'}</div>
         <div class="tj-info">
           <div class="tj-name">${esc(fullN(c))}${pd?` <span class="pill p-ora" style="font-size:9px;">⚠️ Past Due</span>`:isUpNext?` <span class="pill p-pink" style="font-size:9px;">⚡ Up Next</span>`:''}</div>
           <div class="tj-svc">${esc(j.Service)}</div>
+          <div style="font-size:11px;color:var(--txt3);margin-top:1px;">${hrsNote}</div>
         </div>
         <button class="btn b-sm b-p" data-action="complete" data-jid="${esc(j.Job_ID)}">✅ Done</button>
       </div>`;
@@ -525,28 +564,36 @@ function renderDash() {
 
   const allFuture = S.jobs.filter(j => j.Job_Status === 'Scheduled' && j.Scheduled_Date > tod && j.Scheduled_Date !== '')
     .sort((a, b) => (a.Scheduled_Date || '').localeCompare(b.Scheduled_Date || ''));
-  dsec('d-upcoming', 'd-upcoming-sec', allFuture.slice(0, 5), 'sched');
-  
+  dsec('d-upcoming', 'd-upcoming-sec', allFuture, 'sched', 3, S.showAllSched, 'showAllSched');
+
   const unschd = S.jobs.filter(j => j.Job_Status === 'Scheduled' && (!j.Scheduled_Date || j.Scheduled_Date === ''));
-  dsec('d-unschd', 'd-unschd-sec', unschd, 'unschd');
+  dsec('d-unschd', 'd-unschd-sec', unschd, 'unschd', 3, S.showAllUnschd, 'showAllUnschd');
 
   const overdue = S.jobs.filter(j => j.Job_Status === 'Scheduled' && j.Scheduled_Date !== '' && j.Scheduled_Date < tod)
     .sort((a, b) => (a.Scheduled_Date || '').localeCompare(b.Scheduled_Date || ''));
-  dsec('d-overdue', 'd-overdue-sec', overdue, 'overdue');
+  dsec('d-overdue', 'd-overdue-sec', overdue, 'overdue', 3, S.showAllOver, 'showAllOver');
 
-  dsec('d-owed', 'd-owed-sec', owedJobs, 'owed');
-  dsec('d-fu', 'd-fu-sec', S.jobs.filter(j => j.Follow_Up === 'Yes' && j.Job_Status !== 'Cancelled' && !(j.Job_Status === 'Completed' && !isPaidJob(j))), 'fu');
-  dsec('d-rev', 'd-rev-sec', S.jobs.filter(j => j.Review_Status === 'Pending' && j.Job_Status === 'Completed'), 'review');
+  dsec('d-owed', 'd-owed-sec', owedJobs, 'owed', 3, S.showAllOwed, 'showAllOwed');
+
+  const fuJobs = S.jobs.filter(j => j.Follow_Up === 'Yes' && j.Job_Status !== 'Cancelled' && !(j.Job_Status === 'Completed' && !isPaidJob(j)));
+  dsec('d-fu', 'd-fu-sec', fuJobs, 'fu', 3, S.showAllFu, 'showAllFu');
+
+  const revJobs = S.jobs.filter(j => j.Review_Status === 'Pending' && j.Job_Status === 'Completed');
+  dsec('d-rev', 'd-rev-sec', revJobs, 'review', 3, S.showAllRev, 'showAllRev');
 
   const archived = S.jobs.filter(isArchived).sort((a, b) => (b.Completion_Date || '').localeCompare(a.Completion_Date || ''));
-  dsec('d-arc', 'd-arc-sec', archived.slice(0, 3), 'paid');
+  dsec('d-arc', 'd-arc-sec', archived, 'paid', 3, S.showAllArc, 'showAllArchived');
 
   const leads = S.clients.filter(c => c.Status === 'Lead');
   if(!leads.length) {
-    if($('d-lead-sec')) $('d-lead-sec').style.display = 'none';
+    if($('d-lead-sec')) $('d-lead-sec').classList.add('hidden');
   } else {
-    if($('d-lead-sec')) $('d-lead-sec').style.display = '';
-    if($('d-lead')) $('d-lead').innerHTML = leads.map(c => `
+    if($('d-lead-sec')) $('d-lead-sec').classList.remove('hidden');
+    const displayLeads = S.showAllLead ? leads : leads.slice(0, 3);
+    const leadOverflow = leads.length - displayLeads.length;
+    const leadMoreHtml = leadOverflow > 0
+      ? `<div class="show-more-link" onclick="showAllLead()">+ ${leadOverflow} more</div>` : '';
+    if($('d-lead')) $('d-lead').innerHTML = displayLeads.map(c => `
       <div class="jr lead">
         <div class="ji">🟡</div>
         <div class="jd" data-action="open-profile" data-cid="${esc(c.Client_ID)}" style="cursor:pointer;">
@@ -554,13 +601,19 @@ function renderDash() {
           <div class="jm">${esc(formatPhone(c.Phone) || 'No phone')} · ${esc(c.Referral_Source || '—')}</div>
         </div>
         <button class="btn b-sm b-p" data-action="booklead" data-cid="${esc(c.Client_ID)}">📅 Book</button>
-      </div>`).join('');
+      </div>`).join('') + leadMoreHtml;
   }
 }
 
-function setMoneyFilter(f) { S.moneyFilter=f; renderDash(); }
-function showAllSched()    { S.showAllSched=true; renderDash(); }
-function showAllArchived() { S.showAllArc=true; renderDash(); }
+function setMoneyFilter(f)  { S.moneyFilter=f;     renderDash(); }
+function showAllSched()     { S.showAllSched=true;  renderDash(); }
+function showAllArchived()  { S.showAllArc=true;    renderDash(); }
+function showAllOwed()      { S.showAllOwed=true;   renderDash(); }
+function showAllUnschd()    { S.showAllUnschd=true; renderDash(); }
+function showAllOver()      { S.showAllOver=true;   renderDash(); }
+function showAllFu()        { S.showAllFu=true;     renderDash(); }
+function showAllRev()       { S.showAllRev=true;    renderDash(); }
+function showAllLead()      { S.showAllLead=true;   renderDash(); }
 
 function showOwedList() {
   const owedJobs = S.jobs.filter(j => j.Job_Status === 'Completed' && !isPaidJob(j))
@@ -614,6 +667,7 @@ function showCollectedList() {
     const sorted = [...displayPaid].sort((a, b) => (b.Paid_Date || '').localeCompare(a.Paid_Date || ''));
     body.innerHTML = sorted.map(f => {
       const j = getJob(f.Job_ID);
+      if (!j.Job_ID) return ''; // job was deleted/pending — skip orphaned financial record
       const c = getCli(f.Client_ID || j.Client_ID);
       const cid = c.Client_ID || f.Client_ID || j.Client_ID;
       const isComp = j.Job_Status === 'Completed';
@@ -1018,7 +1072,7 @@ async function submitClient(thenBook=false, btn=null) {
   if(S.editCli){
     const c=S.clients.find(x=>x.Client_ID===S.editCli);if(c)Object.assign(c,data);
     if(!S.isDemo)await gasCall({action:'updateClient',clientId:S.editCli,...data});
-    localStorage.removeItem('smhq_cache');
+    cacheInvalidate();
     showToast('✓ Client updated');
     goBack();
     if(S.curCli) openProfile(S.curCli);
@@ -1036,12 +1090,9 @@ async function submitClient(thenBook=false, btn=null) {
       _isSaving=false;if(btn){btn.disabled=false;btn.classList.remove('saving');btn.textContent=origText;}
       showDupWarning(dup,data);return;
     }
-    data.Client_ID='C'+Date.now();data.Created_Date=today();S.clients.push(data);
-    if(!S.isDemo){const r=await gasCall({action:'addClient',...data});if(r.Client_ID){
-      const idx=S.clients.findIndex(x=>x.Client_ID===data.Client_ID);
-      if(idx!==-1)S.clients[idx].Client_ID=r.Client_ID;
-      data.Client_ID=r.Client_ID;
-    }}
+    data.Client_ID='C'+shortId();data.Created_Date=today();S.clients.push(data);
+    cacheWrite();
+    if(!S.isDemo) await persistNewClient(data);
     S.curCli=data.Client_ID;showToast('✓ '+first+' '+last+' added!');
     if(thenBook){openBookJobForClient();}
     else{navTo('clients');renderCli();}
@@ -1072,13 +1123,30 @@ function showDupWarning(existing, newData) {
   }
 }
 
+// Shared GAS sync for any new-client add — updates canonical ID in-place, queues on failure
+async function persistNewClient(data) {
+  try {
+    const r=await gasCall({action:'addClient',...data});
+    if(r&&r.Client_ID){
+      const idx=S.clients.findIndex(x=>x.Client_ID===data.Client_ID);
+      if(idx!==-1)S.clients[idx].Client_ID=r.Client_ID;
+      data.Client_ID=r.Client_ID;
+    }
+    if(!r||!r.success){
+      if(!r?.offline) queueRequest({action:'addClient',...data});
+    } else {
+      cacheInvalidate();
+    }
+  } catch(e) {
+    queueRequest({action:'addClient',...data});
+    showToast('⚠️ Offline — client queued, will sync on next open');
+  }
+}
+
 async function forceAddClient(data) {
-  data.Client_ID='C'+Date.now();data.Created_Date=today();S.clients.push(data);
-  if(!S.isDemo){const r=await gasCall({action:'addClient',...data});if(r.Client_ID){
-    const idx=S.clients.findIndex(x=>x.Client_ID===data.Client_ID);
-    if(idx!==-1)S.clients[idx].Client_ID=r.Client_ID;
-    data.Client_ID=r.Client_ID;
-  }}
+  data.Client_ID='C'+shortId();data.Created_Date=today();S.clients.push(data);
+  cacheWrite();
+  if(!S.isDemo) await persistNewClient(data);
   S.curCli=data.Client_ID;showToast('✓ '+data.First_Name+' '+data.Last_Name+' added!');
   navTo('clients');renderCli();
 }
@@ -1121,7 +1189,7 @@ async function deleteClient() {
 
   if (!S.isDemo) {
     await gasCall({ action: 'deleteClient', clientId: cid });
-    try { localStorage.removeItem('smhq_cache'); } catch(e) {}
+    cacheInvalidate();
   }
   showToast('🗑️ Client deleted');
 }
@@ -1229,9 +1297,9 @@ function calc() {
   const hstRow = $('c-hst')?.closest('.pr');
   if (hstRow) {
     if (t.tRate === 0) {
-      hstRow.style.display = 'none';
+      hstRow.classList.add('hidden');
     } else {
-      hstRow.style.display = 'flex';
+      hstRow.classList.remove('hidden');
       $('c-hst').textContent = '$' + t.hst.toFixed(2);
       hstRow.querySelector('span').textContent = `HST (${Math.round(t.tRate * 100)}%)`;
     }
@@ -1302,7 +1370,7 @@ async function submitJob() {
   };
   const bt = getJobTotals(mockBook);
 
-  const data={Job_ID:'J'+Date.now(),Client_ID:cid,Service:svc,Scheduled_Date:date,Completion_Date:'',Time:time,
+  const data={Job_ID:'J'+shortId(),Client_ID:cid,Service:svc,Scheduled_Date:date,Completion_Date:'',Time:time,
     Pricing_Type:S.priceType,Estimated_Hours:S.priceType==='Hourly'?($('bj-hrs')?.value||'2'):'',
     Flat_Rate:S.priceType==='Flat'?($('bj-flat')?.value||''):'',Surcharge:String(bt.sur),
     Hourly_Rate:S.priceType==='Hourly'?((S.biz.service_prices||{})[$('bj-svc')?.value||'']||S.biz.rate||50):'',
@@ -1317,7 +1385,7 @@ async function submitJob() {
   const c=S.clients.find(x=>x.Client_ID===cid);if(c&&c.Status==='Lead')c.Status='Active';
 
   // Persist new job to cache immediately — survives a reload even if the GAS write hasn't landed yet
-  try { localStorage.setItem('smhq_cache', JSON.stringify({clients:S.clients, jobs:S.jobs, financials:S.financials, lists:S.lists})); } catch(e) {}
+  cacheWrite();
 
   if(S.stack.includes('add-client')){S.stack=[];openProfile(cid);}
   else if(S.stack.includes('profile')){goBack();openProfile(cid);}
@@ -1334,15 +1402,26 @@ async function submitJob() {
         if(idx!==-1)S.jobs[idx].Job_ID=r.Job_ID;
       }
       if(!r||!r.success){
-        // Queue for retry on next successful load
-        try{const q=JSON.parse(localStorage.getItem('smhq_queue')||'[]');q.push({payload:{action:'addJob',...data}});localStorage.setItem('smhq_queue',JSON.stringify(q));}catch(e){}
+        // r.offline=true means gasCall already queued it — don't double-queue.
+        // Only queue explicitly when GAS returned a failure response (not a network drop).
+        if(!r?.offline){
+          // GAS returned failure (not a network drop). Guard against re-queuing if the
+          // write may have partially landed — skip if another job with same client/service/date
+          // already appears in S.jobs (excluding the one we just optimistically added).
+          const alreadyExists = S.jobs.some(x =>
+            x.Client_ID===data.Client_ID && x.Service===data.Service &&
+            x.Scheduled_Date===data.Scheduled_Date && x.Job_ID!==data.Job_ID
+          );
+          if(!alreadyExists) queueRequest({action:'addJob',...data});
+        }
         showToast('⚠️ Offline — job queued, will sync on next open');
       } else {
-        localStorage.removeItem('smhq_cache'); // success — clear so next loadAllData pulls fresh GAS data
+        cacheInvalidate(); // success — clear so next loadAllData pulls fresh GAS data
         showToast('📅 Job booked!');
       }
     } catch(e) {
-      try{const q=JSON.parse(localStorage.getItem('smhq_queue')||'[]');q.push({payload:{action:'addJob',...data}});localStorage.setItem('smhq_queue',JSON.stringify(q));}catch(e2){}
+      // gasCall shouldn't throw (it catches internally), but just in case
+      queueRequest({action:'addJob',...data});
       showToast('⚠️ Offline — job queued, will sync on next open');
     }
   } else {
@@ -1601,7 +1680,7 @@ async function submitJobEdit(btn, markPaid = false) {
       });
     }
 
-    try { localStorage.removeItem('smhq_cache'); } catch (e) { }
+    cacheInvalidate();
     if (S.view === 'dashboard') renderDash();
     else if (S.view === 'profile') openProfile(j.Client_ID);
     showToast(markPaid ? '💰 Paid — $' + tot.toFixed(2) + ' recorded' : '✓ Job updated');
@@ -1633,7 +1712,7 @@ async function deleteJob() {
 
   if (!S.isDemo) {
     await gasCall({ action: 'deleteJob', jobId: jid });
-    try { localStorage.removeItem('smhq_cache'); } catch(e) {}
+    cacheInvalidate();
   }
   showToast('🗑️ Job deleted');
 }
@@ -1709,7 +1788,7 @@ async function submitQuickPaidFromSummary(btn) {
 
     closeMo('m-job');
     if (!S.isDemo) await gasCall({ action: 'markInvoicePaid', jobId: jid, method, ppAmt: amt.toFixed(2) });
-    try { localStorage.removeItem('smhq_cache'); } catch(e) {}
+    cacheInvalidate();
 
     refreshData();
     showToast('💰 Paid — $' + amt.toFixed(2) + ' recorded');
@@ -1743,8 +1822,8 @@ function jeCalc() {
     surcharge:   $('je-sur')?.value,
     addCost:     $('je-addcost')?.value
   });
-  if (t.sub === 0) { preview.style.display = 'none'; return; }
-  preview.style.display = '';
+  if (t.sub === 0) { preview.classList.add('hidden'); return; }
+  preview.classList.remove('hidden');
   const addNotes = $('je-addcost-notes')?.value.trim() || '';
   let html = `<div style="display:flex;justify-content:space-between;margin-bottom:3px;">
     <span>${t.isFlat ? 'Flat rate' : 'Labour (' + ($('je-est-hrs')?.value || 0) + ' hrs × $' + t.rate + '/hr)'}</span>
@@ -1796,7 +1875,7 @@ async function submitQuickPaid(btn) {
   if(!S.isDemo){
     try{
       await gasCall({action:'markInvoicePaid',jobId:jid,method,ppReason:''});
-      try{localStorage.removeItem('smhq_cache');}catch(e){}
+      cacheInvalidate();
     }catch(e){
       showToast('⚠️ Payment save failed — please retry');
       _isSaving=false;if(btn){btn.disabled=false;btn.textContent='✅ Confirm Payment';}
@@ -1996,7 +2075,7 @@ async function submitComplete(btn) {
     actualHours:hrs,reqRev:S.reqRev,markPaid:S.payNow||isFullPrepay,method,
     surcharge:String(surcharge),additionalCost:addCost,additionalCostNotes:addCostNotes,
     totalAmount:newTotal.toFixed(2),reviewStatus:j?.Review_Status||'',paymentStatus:j?.Payment_Status||''});
-  try { localStorage.removeItem('smhq_cache'); } catch(e) {}
+  cacheInvalidate();
   const toast=isFullPrepay?'✅ Job complete — fully pre-paid':S.payNow?'✅ Done + $'+newTotal.toFixed(2)+' paid!':'✅ Job saved — payment pending';
   refreshData(); showToast(toast);
   _isSaving=false;
@@ -2031,37 +2110,43 @@ function openPaidModal(jid) {
 async function submitMarkPaid(btn) {
   if(_isSaving)return;_isSaving=true;
   if(btn){btn.disabled=true;btn.textContent='Saving...';}
-  const jid=S.jobModal;const method=$('paid-method')?.value||'';const ppReason=$('pp-reason')?.value||'';
-  const ppAmtEl=$('pp-amt');const ppAmt=ppAmtEl?parseFloat(ppAmtEl.value)||0:0;
-  const tod=today();closeMo('m-payrec');
-  const j=S.jobs.find(x=>x.Job_ID===jid);
-  const fullAmt=parseMoney(j?.Total_Amount);
-  const isPartial=ppAmt>0&&ppAmt<fullAmt;
-  if(j){
+  try {
+    const jid=S.jobModal;const method=$('paid-method')?.value||'';const ppReason=$('pp-reason')?.value||'';
+    const ppAmtEl=$('pp-amt');const ppAmt=ppAmtEl?parseFloat(ppAmtEl.value)||0:0;
+    const tod=today();closeMo('m-payrec');
+    const j=S.jobs.find(x=>x.Job_ID===jid);
+    if(!j){showToast('⚠️ Job not found');return;}
+    const fullAmt=parseMoney(j.Total_Amount);
+    const isPartial=ppAmt>0&&ppAmt<fullAmt;
     j.Payment_Status=isPartial?'Partial':'Paid';
     j.Payment_Method=method;
     if(ppReason)j.PrePaid_Reason=ppReason;
     if(ppAmt>0)j.PrePaid_Amount=String(ppAmt);
+    const inv=S.financials.find(f=>f.Job_ID===jid);
+    const invAmt=ppAmt>0?String(ppAmt):j.Total_Amount;
+    if(inv){inv.Status='Paid';inv.Payment_Method=method;inv.Paid_Date=tod;inv.Amount=invAmt;}
+    else S.financials.push({Invoice_ID:'INV'+Date.now(),Job_ID:jid,Client_ID:j.Client_ID,Amount:invAmt,Status:'Paid',Payment_Method:method,Paid_Date:tod});
+    if(!S.isDemo)await gasCall({action:'markInvoicePaid',jobId:jid,method,ppReason,ppAmt});
+    cacheInvalidate();
+    refreshData();showToast('💰 Payment recorded!');
+  } catch(e) {
+    showToast('⚠️ Payment save failed — please retry');
+    if(btn){btn.disabled=false;btn.textContent='✅ Confirm Payment Received';}
+  } finally {
+    _isSaving=false;
   }
-  const inv=S.financials.find(f=>f.Job_ID===jid);
-  const invAmt=ppAmt>0?String(ppAmt):j.Total_Amount;
-  if(inv){inv.Status='Paid';inv.Payment_Method=method;inv.Paid_Date=tod;inv.Amount=invAmt;}
-  else S.financials.push({Invoice_ID:'INV'+Date.now(),Job_ID:jid,Client_ID:j.Client_ID,Amount:invAmt,Status:'Paid',Payment_Method:method,Paid_Date:tod});
-  if(!S.isDemo)await gasCall({action:'markInvoicePaid',jobId:jid,method,ppReason,ppAmt});
-  refreshData();showToast('💰 Payment recorded!');
-  _isSaving=false;
 }
 
 async function markRevRequested(jid) {
   const j=S.jobs.find(x=>x.Job_ID===jid);if(j)j.Review_Status='Requested';
   if(!S.isDemo)await gasCall({action:'updateJobDetails',jobId:jid,revStatus:'Requested'});
-  refreshData();showToast('⭐ Review marked as Requested');
+  cacheInvalidate();refreshData();showToast('⭐ Review marked as Requested');
 }
 
 async function clearFU(jid) {
   const j=S.jobs.find(x=>x.Job_ID===jid);if(j)j.Follow_Up='No';
   if(!S.isDemo)await gasCall({action:'updateJobDetails',jobId:jid,followUp:'No'});
-  refreshData();showToast('✓ Follow-up cleared');
+  cacheInvalidate();refreshData();showToast('✓ Follow-up cleared');
 }
 
 
@@ -2110,14 +2195,14 @@ async function saveNotes() {
   if(mode==='jobnote'){
     const j=S.jobs.find(x=>x.Job_ID===S.jobModal);if(j)j.Job_Notes=val;
     if(!S.isDemo)await gasCall({action:'updateJobDetails',jobId:S.jobModal,notes:val});
-    refreshData();showToast('✓ Notes saved');
+    cacheInvalidate();refreshData();showToast('✓ Notes saved');
     _isSaving=false;
     if(btn){btn.disabled=false;btn.textContent=origText;}
     return;
   }
   const c=S.clients.find(x=>x.Client_ID===S.curCli);if(c)c[S.notesMeta]=val;
   if(!S.isDemo)await gasCall({action:'updateClientField',clientId:S.curCli,field:S.notesMeta,value:val});
-  refreshData();showToast('✓ Notes saved');
+  cacheInvalidate();refreshData();showToast('✓ Notes saved');
   _isSaving=false;
   if(btn){btn.disabled=false;btn.textContent=origText;}
 }
@@ -2174,12 +2259,12 @@ function syncBizUI() {
     if(logoSrc){
       imgEl.src = logoSrc;
       imgEl.classList.remove('hidden');
-      emptyEl.style.display = 'none';
-      if(removeBtn) removeBtn.style.display = 'none'; // no remove — logo is managed manually
+      emptyEl.classList.add('hidden');
+      if(removeBtn) removeBtn.classList.add('hidden'); // no remove — logo is managed manually
     } else {
       imgEl.classList.add('hidden');
-      emptyEl.style.display = '';
-      if(removeBtn) removeBtn.style.display = 'none';
+      emptyEl.classList.remove('hidden');
+      if(removeBtn) removeBtn.classList.add('hidden');
     }
   }
 }
@@ -2215,11 +2300,11 @@ function updateHeaderBrand() {
     };
     logoEl.src = logoSource;
     logoEl.classList.remove('hidden');
-    nameEl.style.display = 'none';
+    nameEl.classList.add('hidden');
   } else {
     logoEl.classList.add('hidden');
     logoEl.onload = null;
-    nameEl.style.display = '';
+    nameEl.classList.remove('hidden');
   }
 }
 
@@ -2287,6 +2372,7 @@ async function addListItem() {
   const v=$('m-ladd-inp')?.value.trim()||'';if(!v){showToast('⚠️ Enter a value');return;}
   const k=S.listMeta.k;S.lists[k]=[...(S.lists[k]||[]),v];
   if(!S.isDemo)await gasCall({action:'updateList',listKey:k,list:S.lists[k]});
+  cacheWrite();
   closeMo('m-ladd');renderAdmin();popLists();showToast('✓ Added');
 }
 
@@ -2296,12 +2382,14 @@ async function saveListItem() {
   const v=$('m-ledit-inp')?.value.trim()||'';if(!v){showToast('⚠️ Enter a value');return;}
   const{k,i}=S.listMeta;const l=gl(k);l[i]=v;S.lists[k]=l;
   if(!S.isDemo)await gasCall({action:'updateList',listKey:k,list:l});
+  cacheWrite();
   closeMo('m-ledit');renderAdmin();popLists();showToast('✓ Saved');
 }
 
 async function delListItem(k,i) {
   const l=gl(k);const r=l.splice(i,1)[0];S.lists[k]=l;
   if(!S.isDemo)await gasCall({action:'updateList',listKey:k,list:l});
+  cacheWrite();
   popLists();renderAdmin();showToast('✕ "'+r+'" removed');
 }
 

@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <!--
-  SUPERMOM FOR HIRE — CRM v4.01 (Production Release Testing)
+  SUPERMOM FOR HIRE — CRM v4.05 (Production Release Testing)
 -->
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
@@ -15,7 +15,7 @@
 <style>
 :root {
   --pink: #D4317A; --pink-d: #B02464; --pink-l: #FDF2F7; --pink-b: #F3C5D8;
-  --bg: #F9F7F5; --surface: #FFFFFF; --surface2: #F2EFEC; --border: rgba(42,35,32,0.08);
+  --bg: #F9F7F5; --surface: #FFFFFF; --border: rgba(42,35,32,0.08);
   --txt: #1F1A18; --txt2: #635852; --txt3: #9E938D;
   --red: #D92D20; --red-s: #FEF3F2; --red-b: #FEE4E2;
   --green: #079455; --green-s: #ECFDF3; --green-b: #D1FADF;
@@ -393,37 +393,35 @@ body.modal-open #scroll{overflow:hidden;}
     <div class="tc-sub" id="t-ct">No jobs today — enjoy your day! 🌸</div>
     <div id="today-jobs-list"></div>
   </div>
-  <div id="d-upcoming-sec" style="display:none;">
+  <div id="d-upcoming-sec" class="hidden">
     <div class="slbl">📅 Upcoming Jobs <div class="slbl-line"></div></div>
     <div id="d-upcoming"></div>
-    <div class="show-more-link hidden" id="d-show-more" onclick="showAllSched()"></div>
   </div>
-  <div id="d-owed-sec" style="display:none;">
+  <div id="d-owed-sec" class="hidden">
     <div class="slbl">💰 Pending Payment <div class="slbl-line"></div></div>
     <div id="d-owed"></div>
   </div>
-  <div id="d-unschd-sec" style="display:none;">
+  <div id="d-unschd-sec" class="hidden">
     <div class="slbl">🗓️ To Be Scheduled <div class="slbl-line"></div></div>
     <div id="d-unschd"></div>
   </div>
-  <div id="d-overdue-sec" style="display:none;">
+  <div id="d-overdue-sec" class="hidden">
     <div class="slbl">🟠 Needs Updating — Past Due <div class="slbl-line"></div></div>
     <div id="d-overdue"></div>
   </div>
-  <div id="d-fu-sec" style="display:none;">
+  <div id="d-fu-sec" class="hidden">
     <div class="slbl">🔔 Follow-Up Needed <div class="slbl-line"></div></div>
     <div id="d-fu"></div>
   </div>
-  <div id="d-rev-sec" style="display:none;">
+  <div id="d-rev-sec" class="hidden">
     <div class="slbl">⭐ Reviews to Request <div class="slbl-line"></div></div>
     <div id="d-rev"></div>
   </div>
-  <div id="d-arc-sec" style="display:none;">
+  <div id="d-arc-sec" class="hidden">
     <div class="slbl">✅ Recently Completed <div class="slbl-line"></div></div>
     <div id="d-arc"></div>
-    <div class="show-more-link hidden" id="d-arc-more" onclick="showAllArchived()"></div>
   </div>
-  <div id="d-lead-sec" style="display:none;">
+  <div id="d-lead-sec" class="hidden">
     <div class="slbl">🟡 Leads <div class="slbl-line"></div></div>
     <div id="d-lead"></div>
   </div>
@@ -538,7 +536,7 @@ body.modal-open #scroll{overflow:hidden;}
       <div class="fh" id="svc-price-hint" style="display:none;color:var(--green);font-weight:800;"></div>
     </div>
     <div id="bj-hrs-g" class="fg"><label class="fl">Estimated Hours</label><input class="fi" id="bj-hrs" type="text" inputmode="decimal" pattern="[0-9\.]*" placeholder="e.g. 2" oninput="calc()"></div>
-    <div id="bj-flat-g" class="fg" style="display:none;">
+    <div id="bj-flat-g" class="fg" class="hidden">
       <label class="fl">Flat Rate Amount (before tax) *</label>
       <input class="fi" id="bj-flat" type="text" inputmode="decimal" pattern="[0-9\.]*" placeholder="e.g. 200" oninput="calc()">
       <div class="fh" id="bj-hst-hint">Tax added if enabled</div>
@@ -576,13 +574,13 @@ body.modal-open #scroll{overflow:hidden;}
     </div>
     <div class="fg hide-admin">
       <label class="fl">Business Logo</label>
-      <div class="logo-upload-row" style="display:none;">
+      <div class="logo-upload-row" class="hidden">
         <div id="logo-thumb-empty" class="logo-thumb-empty">🏠</div>
         <img id="logo-thumb-img" class="logo-thumb hidden" alt="Logo preview">
         <div style="flex:1;min-width:0;">
           <button class="btn b-s b-sm mb8" style="width:100%;" onclick="document.getElementById('logo-file-inp').click()">📷 Upload Logo</button>
           <button class="btn b-r b-xs" id="logo-remove-btn" style="width:100%;display:none;" onclick="removeLogo()">✕ Remove</button>
-          <input type="file" id="logo-file-inp" accept="image/png,image/jpeg,image/webp" style="display:none;" onchange="handleLogoUpload(this)">
+          <input type="file" id="logo-file-inp" accept="image/png,image/jpeg,image/webp" class="hidden" onchange="handleLogoUpload(this)">
         </div>
       </div>
       <div class="fh">PNG or JPG, square crop works best. Max 200×200px recommended.</div>

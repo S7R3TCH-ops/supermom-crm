@@ -23,26 +23,29 @@
 ### One-Time System Requirements
 | Tool | Status | Notes |
 |------|--------|-------|
-| Node.js + npm | ✅ Installed | Required for clasp |
+| Node.js + npm | ✅ Installed | Required for clasp, Lighthouse, PurgeCSS |
 | `@google/clasp` | ✅ Installed | `npm install` done |
+| Aider (AI Pair) | ✅ Installed | Global (via uv). Requires `C:\Users\jlund\.local\bin` in PATH |
+| Lighthouse CLI | ✅ Installed | Global (`npm install -g lighthouse`) |
+| PurgeCSS | ✅ Installed | Local DevDependency (`npm install --save-dev purgecss`) |
 | clasp authenticated | ✅ Done | `npm run login` completed |
 | Google Apps Script API | ✅ Enabled | script.google.com/home/usersettings |
 | `.clasp.json` | ✅ Created | Script ID: `1N0wTqDEKihPP...` (local only, gitignored) |
 | `appsscript.json` | ✅ Created | Manifest file, committed to repo |
 | Git + GitHub access | ✅ Working | Pushing to `s7r3tch-ops/supermom-crm` |
 
-### If clasp stops working on a new machine
-1. `npm install` — reinstall clasp
-2. `npm run login` — re-authenticate Google account
-3. Enable Apps Script API at script.google.com/home/usersettings
-4. Recreate `.clasp.json` with Script ID `1N0wTqDEKihPP6cR0yGJZYaSqViRQgkZMnufIb0UhmhVqAC-3QB6Hxp9R`
+### If tools stop working or on a new machine
+1. **Aider:** If `aider` command not found, ensure `C:\Users\jlund\.local\bin` is in User PATH.
+2. **clasp:** `npm install` then `npm run login`. Recreate `.clasp.json` if missing (Script ID: `1N0wTqDEKihPP6cR0yGJZYaSqViRQgkZMnufIb0UhmhVqAC-3QB6Hxp9R`).
+3. **PurgeCSS:** Run `npm install` to restore local dev dependencies.
 
 ## Deploy Checklist
-1. Bump version in modified file(s) — `app.js`, `index.html`, `code.js`
-2. Update `## Current Versions` in this file
-3. Push `index.html` + `app.js` to `main` branch → auto-deploys to GitHub Pages
-4. For `code.js` changes: run `npm run deploy` (pushes `code.js` to GAS and creates a new version)
-5. Remind Joel: re-upload `app.js` and `code.js` to the Claude project (main chat sync)
+1. Run `@agent-code-simplifier:code-simplifier` — review changed code for reuse, quality, and efficiency before shipping
+2. Bump version in modified file(s) — `app.js`, `index.html`, `code.js`
+3. Update `## Current Versions` in this file
+4. Push `index.html` + `app.js` to `main` branch → auto-deploys to GitHub Pages
+5. For `code.js` changes: run `npm run deploy` (pushes `code.js` to GAS and creates a new version)
+6. Remind Joel: re-upload `app.js` and `code.js` to the Claude project (main chat sync)
 
 ### Branch Note
 - Work on `sandbox` branch for development
@@ -50,8 +53,8 @@
 - `code.js` lives locally in this repo (unlike the legacy `supermom-crm` where it was GAS-only)
 
 ## Current Versions
-- `app.js` → v4.02
-- `code.js` → v4.98
+- `app.js` → v4.05
+- `code.js` → v5.00
 - `index.html` → synced with app.js
 
 ## Architecture Rules — DO NOT VIOLATE
@@ -205,19 +208,43 @@ Handles both full and partial prepayments:
 - Global event delegation on `#scroll` for all `[data-action]` buttons
 - Prepaid pills show on ALL non-completed jobs (ASAP, scheduled, by-date)
 
+### CSS & Visibility
+- **Pure CSS Approach:** Transitioned visibility logic from direct JS `.style.display` manipulation to CSS `.hidden` classes.
+- **Audit Results:** CSS is clean; unused `--surface2` variable was removed.
+
 ## To-Do List
 _Updated at the end of every session. Check this first when starting work._
 
+### UI Modernization (Hybrid Focus)
+> **Before starting any modernization task:** invoke `@agent-frontend-design:frontend-design` to set aesthetic direction before writing UI code.
+- [ ] **Task 1: CSS Variables & Resets** — Establish Apple/Material base.
+- [ ] **Task 2: Header & Navigation** — Move to white background header.
+- [ ] **Task 3: Hybrid Focus (Cards/Lists)** — Refactor core layout components.
+- [ ] **Task 4: Buttons & Forms** — Polish interactive elements.
+- [ ] **Mockup Review:** `modern-preview.html` exists for visual reference (user currently undecided on direction).
+
 ### Bugs
-- [ ] **Persist `_pendingDeletes` to localStorage** — ghost data appears on refresh-during-delete (HIGH)
+- [x] **Persist `_pendingDeletes` to localStorage** — CONFIRMED FIXED. `savePendingDeletes()` exists and is called correctly at lines 172-179 and on every delete. No action needed.
+- [x] **`submitMarkPaid` null reference** — fixed in v4.03: early return if job not found, wrapped in try/catch.
+- [x] **`showMo`/`closeMo` null guard** — fixed in v4.03.
+- [x] **`showCollectedList` orphaned financial records** — fixed in v4.03: skips records for deleted jobs.
+- [x] **`formatVal` string-T truncation** — CRITICAL fix in v4.99: was corrupting any field value containing uppercase 'T' (e.g. city "Toronto"). Now uses precise ISO datetime regex.
+- [x] **`markInvoicePaid` PrePaid_Amount overwrites** — fixed in v4.99: now accumulates across multiple partial payments, clears on full payment.
+- [x] **`upsertConfig` hardcoded column index** — fixed in v4.99: uses header lookup.
+- [x] **`uid()` low entropy** — fixed in v4.99: uses base-36 random string.
+- [ ] **`Payment_Status` stale after payment voided** — when a payment is voided, the JOBS sheet Payment_Status is not reconciled. No UI path currently voids payments, so low urgency.
+- [ ] **`cascadeDeleteClient` no unpaid balance warning** — deletes client even with unpaid jobs; no warning returned.
 
 ### Pending Audits
-- [ ] **`parseMoney` vs `forceNum`** — may be redundant with `getJobTotals`. Audit before changing anything.
+- [x] **`parseMoney` vs `forceNum`** — CLEAN. No `forceNum()` exists. `parseMoney()` is the sole utility, used consistently throughout.
+- [ ] **GAS deployment URL mismatch** — CLAUDE.md documents one URL; `app.js` line 6 has a different URL. Verify which is the active deployment and update CLAUDE.md.
+- [ ] **`cascadeDeleteClient` not wired to frontend** — backend function exists (soft-deletes client + all jobs/payments) but frontend only calls `deleteClient` (client only). If cascade delete is the intended flow, wire it up.
 
 ### Features
 - [ ] **Invoice generation** — planned, not yet built
 - [ ] **Calendar sync** — `_syncCalendar` flag pattern exists, needs end-to-end testing
 - [ ] **Worker assignment** — schema exists (06_WORKERS + Jobs.AL), UI not yet built
+- [ ] **2-hour booking conflict warning** — warn when a new job is booked within 2 hours of an existing scheduled job; implement on frontend in `submitJob` (check S.jobs for same-day jobs within 2-hr window)
 
 ### Infrastructure
 - [ ] **`npm run deploy` end-to-end test** — clasp push working, full deploy not yet verified
@@ -230,10 +257,11 @@ Never deliver a modified file without bumping its version. No exceptions.
 
 ## End-of-Session Reminder — MANDATORY
 At the end of every session, always:
-1. Update the **To-Do List** — check off completed items, add anything new that came up
-2. Run `npm run deploy` if `code.js` was changed (pushes to GAS + creates new version)
-3. Push `index.html` + `app.js` to `main` when ready to go live
-4. Re-upload `app.js` and `code.js` to the Claude project so the main Claude chat stays in sync
+1. Run `@agent-code-simplifier:code-simplifier` — review all changed code before closing out
+2. Update the **To-Do List** — check off completed items, add anything new that came up
+3. Run `npm run deploy` if `code.js` was changed (pushes to GAS + creates new version)
+4. Push `index.html` + `app.js` to `main` when ready to go live
+5. Re-upload `app.js` and `code.js` to the Claude project so the main Claude chat stays in sync
 
 ## Working Style
 - One fix at a time, verify before moving on

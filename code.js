@@ -1,11 +1,7 @@
 /**
- * SUPERMOM FOR HIRE â€” Backend Core v4.98
- * Fixes from audit:
- *   - Added missing: deleteClient, updateClientField, getRowById
- *   - Added missing switch cases: updateClientField, updateList
- *   - Fixed getRows() to use formatVal() instead of raw .toISOString()
- *   - Fixed updateBizConfig() key names to match frontend expectations
- *   - Removed dead getSyncData() reference to TABS.WORKERS
+ * SUPERMOM FOR HIRE — Backend Core v5.00
+ * v5.00: Short IDs — uid() now generates 6-char base-36 random IDs instead of timestamps.
+ *        addClient/addJob use uid() for canonical IDs.
  */
 
 const TZ = 'America/Toronto';
@@ -169,7 +165,7 @@ function getAllData() {
 // â”€â”€ CRUD LOGIC â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function addClient(p) {
-  const id = p.Client_ID || 'C-' + Date.now();
+  const id = p.Client_ID || uid('C');
   p.Client_ID  = id;
   p.Is_Deleted = 'FALSE';
   appendRow(TABS.CLIENTS, p);
@@ -196,7 +192,7 @@ function deleteClient(p) {
 }
 
 function addJob(p) {
-  const id = p.Job_ID || 'J-' + Date.now();
+  const id = p.Job_ID || uid('J');
   p.Job_ID     = id;
   p.Is_Deleted = 'FALSE';
   appendRow(TABS.JOBS, p);
@@ -272,7 +268,6 @@ function markInvoicePaid(p) {
 
   const totalAmt = parseFloat(job.Total_Amount) || 0;
   const paidAmt  = parseFloat(p.ppAmt) || totalAmt;
-  const isPartial = paidAmt > 0 && paidAmt < (totalAmt - 0.01);
 
   const payment = {
     Payment_ID:     uid('PAY'),
@@ -286,13 +281,21 @@ function markInvoicePaid(p) {
   appendRow(TABS.PAYMENTS, payment);
 
   // Update job row: partial pre-pay vs full paid
+  // Accumulate PrePaid_Amount across multiple partial payments
+  const priorPrepaid = parseFloat(job.PrePaid_Amount) || 0;
+  const totalPaidAfter = priorPrepaid + paidAmt;
+  const isPartial = totalPaidAfter > 0 && totalPaidAfter < (totalAmt - 0.01);
   const jobUpdate = {
     Payment_Status: isPartial ? 'Partial' : 'Paid',
     Payment_Method: p.method || 'Cash'
   };
   if (isPartial) {
-    jobUpdate.PrePaid_Amount = paidAmt;
+    jobUpdate.PrePaid_Amount = totalPaidAfter;
     if (p.ppReason) jobUpdate.PrePaid_Reason = p.ppReason;
+  } else {
+    // Fully paid — clear any stale prepaid fields
+    jobUpdate.PrePaid_Amount = '';
+    jobUpdate.PrePaid_Reason = '';
   }
   updateRow(TABS.JOBS, 'Job_ID', p.jobId, jobUpdate);
   return { success: true };
@@ -402,7 +405,7 @@ function formatVal(v) {
     if (v.getFullYear() === 1899) return Utilities.formatDate(v, TZ, 'HH:mm');
     return Utilities.formatDate(v, TZ, 'yyyy-MM-dd');
   }
-  if (typeof v === 'string' && v.includes('T')) return v.split('T')[0];
+  if (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}T/.test(v)) return v.split('T')[0];
   return v;
 }
 
@@ -433,11 +436,13 @@ function updateRow(tabName, idCol, idVal, updateObj) {
 function upsertConfig(cat, key, val) {
   const sheet    = SS.getSheetByName(TABS.CONFIG);
   const data     = sheet.getDataRange().getValues();
-  const rowIndex = data.findIndex(r => r[0] === key && r[2] === cat);
-  if (rowIndex > -1) sheet.getRange(rowIndex + 1, 2).setValue(val);
+  const headers  = data[0];
+  const valCol   = headers.indexOf('Value') + 1; // 1-indexed; falls back to 2 if header missing
+  const rowIndex = data.findIndex((r, i) => i > 0 && r[0] === key && r[2] === cat);
+  if (rowIndex > -1) sheet.getRange(rowIndex + 1, valCol > 0 ? valCol : 2).setValue(val);
   else sheet.appendRow([key, val, cat, 99, '']);
 }
 
 function uid(pfx) {
-  return pfx + '_' + Date.now() + '_' + Math.floor(Math.random() * 1000);
+  return pfx + '_' + Math.random().toString(36).slice(2, 8);
 }
