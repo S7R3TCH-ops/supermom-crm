@@ -53,7 +53,7 @@
    git checkout sandbox
    ```
 5. For `code.js` changes: run `npm run deploy` (pushes `code.js` to GAS and creates a new version)
-6. Remind Joel: re-upload `app.js` and `code.js` to the Claude project (main chat sync)
+6. Remind Joel: re-upload `app.js`, `code.js`, and `CLAUDE.md` to the Claude project (main chat sync)
 
 ### Branch Note
 - Work on `sandbox` branch for development
@@ -270,7 +270,7 @@ At the end of every session, always:
 2. Update the **To-Do List** — check off completed items, add anything new that came up
 3. Run `npm run deploy` if `code.js` was changed (pushes to GAS + creates new version)
 4. Push `index.html` + `app.js` to `main` — always do this yourself (see Deploy Checklist step 4)
-5. Re-upload `app.js` and `code.js` to the Claude project so the main Claude chat stays in sync
+5. Re-upload `app.js`, `code.js`, and `CLAUDE.md` to the Claude project so the main Claude chat stays in sync
 
 ## Working Style
 - One fix at a time, verify before moving on
