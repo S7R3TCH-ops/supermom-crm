@@ -43,9 +43,17 @@
 1. Run `@agent-code-simplifier:code-simplifier` — review changed code for reuse, quality, and efficiency before shipping
 2. Bump version in modified file(s) — `app.js`, `index.html`, `code.js`
 3. Update `## Current Versions` in this file
-4. Push `index.html` + `app.js` to `main` branch → auto-deploys to GitHub Pages
+4. **Always push `index.html` + `app.js` to `main` yourself** — do not wait for Joel to ask. From the `sandbox` branch:
+   ```
+   git checkout main
+   git checkout sandbox -- index.html app.js
+   git add index.html app.js
+   git commit -m "<describe the change>"
+   git push origin main
+   git checkout sandbox
+   ```
 5. For `code.js` changes: run `npm run deploy` (pushes `code.js` to GAS and creates a new version)
-6. Remind Joel: re-upload `app.js` and `code.js` to the Claude project (main chat sync)
+6. Remind Joel: re-upload `app.js`, `code.js`, and `CLAUDE.md` to the Claude project (main chat sync)
 
 ### Branch Note
 - Work on `sandbox` branch for development
@@ -53,8 +61,8 @@
 - `code.js` lives locally in this repo (unlike the legacy `supermom-crm` where it was GAS-only)
 
 ## Current Versions
-- `app.js` → v4.05
-- `code.js` → v5.00
+- `app.js` → v4.06
+- `code.js` → v5.01
 - `index.html` → synced with app.js
 
 ## Architecture Rules — DO NOT VIOLATE
@@ -232,6 +240,7 @@ _Updated at the end of every session. Check this first when starting work._
 - [x] **`markInvoicePaid` PrePaid_Amount overwrites** — fixed in v4.99: now accumulates across multiple partial payments, clears on full payment.
 - [x] **`upsertConfig` hardcoded column index** — fixed in v4.99: uses header lookup.
 - [x] **`uid()` low entropy** — fixed in v4.99: uses base-36 random string.
+- [x] **Paid job with $0 total not appearing in collected list** — fixed in v4.06/v5.01: `updateJobDetails` now appends a delta payment when a Paid job's total is updated (e.g. additional cost added after payment recorded). Frontend `submitJobEdit` also always syncs the local financial record amount regardless of paid status. `submitQuickPaid` now updates `inv.Amount` on existing records.
 - [ ] **`Payment_Status` stale after payment voided** — when a payment is voided, the JOBS sheet Payment_Status is not reconciled. No UI path currently voids payments, so low urgency.
 - [ ] **`cascadeDeleteClient` no unpaid balance warning** — deletes client even with unpaid jobs; no warning returned.
 
@@ -260,8 +269,8 @@ At the end of every session, always:
 1. Run `@agent-code-simplifier:code-simplifier` — review all changed code before closing out
 2. Update the **To-Do List** — check off completed items, add anything new that came up
 3. Run `npm run deploy` if `code.js` was changed (pushes to GAS + creates new version)
-4. Push `index.html` + `app.js` to `main` when ready to go live
-5. Re-upload `app.js` and `code.js` to the Claude project so the main Claude chat stays in sync
+4. Push `index.html` + `app.js` to `main` — always do this yourself (see Deploy Checklist step 4)
+5. Re-upload `app.js`, `code.js`, and `CLAUDE.md` to the Claude project so the main Claude chat stays in sync
 
 ## Working Style
 - One fix at a time, verify before moving on
