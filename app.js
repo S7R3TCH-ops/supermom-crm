@@ -1,7 +1,7 @@
 // ============================================================================
 // 1. CONSTANTS, GLOBALS & STATE
 // ============================================================================
-const APP_VERSION = '4.06';
+const APP_VERSION = '4.07';
 
 const GAS_URL = "https://script.google.com/macros/s/AKfycbwmhWli_n6kSgG9LiHWJrZGeZ73uvz7XrgO0G24i6MRyCcdFJ65hCmtY5oPPqCMZ9CEEA/exec";
 
@@ -206,10 +206,9 @@ function savePendingDeletes() {
 // Overrides: { hrs, flatRate, surcharge, addCost, pricingType }
 function getJobTotals(j, ov) {
   ov = ov || {};
-  // Prefer the job's stored rate (snapshot at booking) over the current global rate.
-  // New/mock jobs won't have Hourly_Rate yet, so fall back to global.
-  const rate   = parseFloat(j.Hourly_Rate) || parseFloat(S.biz.rate) || 50;
-  // Prefer per-job HST_Rate if stored, else use current global tax setting
+  // Prefer the override rate, then the job's stored rate, then the current global rate.
+  const rate = ov.rate !== undefined ? parseFloat(ov.rate) 
+             : (parseFloat(j.Hourly_Rate) || parseFloat(S.biz.rate) || 50);
   const tRate  = (j.HST_Rate !== undefined && j.HST_Rate !== '') ? parseFloat(j.HST_Rate) || 0 : taxRate();
   const isFlat = (ov.pricingType || j.Pricing_Type) === 'Flat';
 
@@ -871,7 +870,7 @@ function profJobRow(j) {
   } else if (isSched) {
     acts += `<button class="btn b-sm b-bl" data-action="complete" data-jid="${esc(j.Job_ID)}">✅ Done</button>`;
   }
-  if (!isPaid && j.Job_Status === 'Completed') acts += `<button class="btn b-sm b-g" data-action="p-paid" data-jid="${esc(j.Job_ID)}">💰 Paid</button>`;
+  if (!isPaid && j.Job_Status === 'Completed') acts += `<button class="btn b-sm b-bl" data-action="p-paid" data-jid="${esc(j.Job_ID)}">💰 Paid</button>`;
   if (isSched && !isAnyPrepaid) acts += `<button class="btn b-sm b-s" data-action="p-prepay" data-jid="${esc(j.Job_ID)}">💜 Pre-Pay</button>`;
   if (j.Job_Status === 'Completed') acts += `<button class="btn b-sm b-s" data-action="bookagain" data-jid="${esc(j.Job_ID)}">📋 Again</button>`;
 
@@ -884,7 +883,7 @@ function profJobRow(j) {
   }
 
   return `<div class="jr ${tc}" data-action="open-job" data-jid="${esc(j.Job_ID)}">
-    <div class="ji">${isPaid ? '✅' : isOverdue ? '🟠' : isSched ? '🔵' : '🔴'}</div>
+    <div class="ji">${isPaid ? '✅' : isOverdue ? '🚨' : isSched ? '🔵' : '🚨'}</div>
     <div class="jd">
       <div class="jn">${esc(j.Service)}</div>
       <div class="jm">${!sd ? '⚡ ASAP' : fmtD(sd)}${j.Time && !j.Time.includes('1899') && sd ? ' @ ' + fmtT(j.Time) : ''}${hDisplay ? ' · ' + hDisplay : ''}</div>
@@ -907,7 +906,15 @@ function jrHTML(j, type) {
   const sd = j.Scheduled_Date;
   const isASAP = j.Scheduling_Type === 'ASAP' && !sd;
   const dStr = isASAP ? '⚡ ASAP' : fmtD(sd);
-  const icons = { owed: '🔴', sched: '🔵', fu: '🔔', review: '⭐', overdue: '🟠', unschd: '🗓️', lead: '🟡' };
+  const icons = { 
+    owed: '🚨', 
+    sched: '🔵', 
+    fu: '🔔', 
+    review: '⭐', 
+    overdue: '🚨', 
+    unschd: '🗓️', 
+    lead: '🟡' 
+  };
 
   const hRaw2    = j.Job_Status === 'Completed' ? (j.Actual_Duration || j.Estimated_Hours) : j.Estimated_Hours;
   const hDisplay = hRaw2 ? (j.Job_Status === 'Completed' ? hRaw2 + ' hrs' : 'est. ' + hRaw2 + ' hrs') : '';
@@ -1525,11 +1532,15 @@ function openJobModal(jid) {
         </div></div>
       <div class="fg" id="je-hrs-g" style="display:${j.Pricing_Type!=='Flat'?'':'none'};"><label class="fl">Estimated Hours</label>
         <input class="fi" id="je-est-hrs" type="text" inputmode="decimal" pattern="[0-9\.]*" value="${esc(j.Estimated_Hours||'')}" placeholder="e.g. 2.5" oninput="jeCalc()"></div>
+      <div class="fg" id="je-rate-g" style="display:${j.Pricing_Type==='Flat'?'none':''};">
+        <label class="fl">Hourly Rate ($)</label>
+        <input class="fi" id="je-rate" type="text" inputmode="decimal" pattern="[0-9\.]*" value="${esc(j.Hourly_Rate || S.biz.rate || 50)}" oninput="jeCalc()">
+      </div>
       <div class="fg" id="je-flat-g" style="display:${j.Pricing_Type==='Flat'?'':'none'};"><label class="fl">Flat Rate (before tax)</label>
         <input class="fi" id="je-flat" type="text" inputmode="decimal" pattern="[0-9\.]*" value="${esc(j.Flat_Rate||'')}" placeholder="e.g. 180.00" oninput="jeCalc()"></div>
       <div class="fg"><label class="fl">Surcharge ($)</label>
         <input class="fi" id="je-sur" type="text" inputmode="decimal" pattern="[0-9\.]*" value="${parseMoney(j.Surcharge)>0?esc(j.Surcharge):''}" placeholder="e.g. 15.00" oninput="jeCalc()"></div>
-      <div id="je-calc-preview" style="background:var(--blue-s);border:1.5px solid var(--blue-b);border-radius:12px;padding:10px 14px;margin-bottom:14px;font-size:13px;color:var(--txt2);display:none;"></div>
+      <div id="je-calc-preview" style="background:var(--blue-s);border:1.5px solid var(--blue-b);border-radius:12px;padding:10px 14px;margin-bottom:14px;font-size:13px;color:var(--txt2);"></div>
       <div class="fg"><label class="fl">Job Notes (pre-job)</label><textarea class="ft" id="je-notes">${esc(j.Job_Notes||'')}</textarea></div>
       <div class="fg"><label class="fl">Follow-Up</label>
         <div class="tr"><button class="tb ${j.Follow_Up!=='Yes'?'on':''}" id="jfu-n" onclick="jFU('No')">No</button><button class="tb ${j.Follow_Up==='Yes'?'on':''}" id="jfu-y" onclick="jFU('Yes')">🔔 Yes</button></div></div>
@@ -1562,11 +1573,23 @@ function openJobModalEdit() {
     <div class="fg"><label class="fl">Start Time</label><input class="fi" id="je-time" type="time" value="${esc(j.Time&&!j.Time.includes('1899')?j.Time:'09:00')}"></div>
     <div class="fg"><label class="fl">Job Notes</label><textarea class="ft" id="je-notes">${esc(j.Job_Notes||'')}</textarea></div>
     <div class="fg"><label class="fl">Completion Notes</label><textarea class="ft" id="je-comp">${esc(j.Completion_Notes||'')}</textarea></div>
-    <div class="fg"><label class="fl">Actual Hours</label><input class="fi" id="je-hrs" type="text" inputmode="decimal" pattern="[0-9\.]*" value="${esc(j.Actual_Duration||'')}"></div>
+    <div class="fg" id="je-hrs-g" style="display:${j.Pricing_Type==='Flat'?'none':''};">
+      <label class="fl">Actual Hours</label>
+      <input class="fi" id="je-hrs" type="text" inputmode="decimal" pattern="[0-9\.]*" value="${esc(j.Actual_Duration||'')}" oninput="jeCalc()">
+    </div>
+    <div class="fg" id="je-flat-g" style="display:${j.Pricing_Type==='Flat'?'':'none'};">
+      <label class="fl">Flat Rate (before tax)</label>
+      <input class="fi" id="je-flat" type="text" inputmode="decimal" pattern="[0-9\.]*" value="${esc(j.Flat_Rate||'')}" placeholder="e.g. 180.00" oninput="jeCalc()">
+    </div>
+    <div class="fg" id="je-rate-g" style="display:${j.Pricing_Type==='Flat'?'none':''};">
+      <label class="fl">Hourly Rate ($)</label>
+      <input class="fi" id="je-rate" type="text" inputmode="decimal" pattern="[0-9\.]*" value="${esc(j.Hourly_Rate || S.biz.rate || 50)}" oninput="jeCalc()">
+    </div>
     <div class="fg"><label class="fl">Additional Costs ($)</label>
-      <input class="fi" id="je-addcost" type="text" inputmode="decimal" pattern="[0-9\.]*" value="${esc(j.Additional_Cost||'')}" placeholder="e.g. 25.00"></div>
+      <input class="fi" id="je-addcost" type="text" inputmode="decimal" pattern="[0-9\.]*" value="${esc(j.Additional_Cost||'')}" placeholder="e.g. 25.00" oninput="jeCalc()"></div>
+    <div id="je-calc-preview" class="hidden" style="background:var(--blue-s);border:1.5px solid var(--blue-b);border-radius:12px;padding:10px 14px;margin-bottom:14px;font-size:13px;color:var(--txt2);"></div>
     <div class="fg"><label class="fl">Additional Cost Description</label>
-      <input class="fi" id="je-addcost-notes" type="text" value="${esc(j.Additional_Cost_Notes||'')}" placeholder="e.g. Cleaning supplies"></div>
+      <input class="fi" id="je-addcost-notes" type="text" value="${esc(j.Additional_Cost_Notes||'')}" placeholder="e.g. Cleaning supplies" oninput="jeCalc()"></div>
     <div class="fg"><label class="fl">📸 Photo Link</label><input class="fi" id="je-photos" type="url" value="${esc(j.Photo_Links||'')}" placeholder="Google Photos link…"></div>
     <div class="fg"><label class="fl">Review Status</label>
       <select class="fs" id="je-rev">
@@ -1616,6 +1639,7 @@ async function submitJobEdit(btn, markPaid = false) {
     const isFlat  = $('je-pr-f')?.classList.contains('on');
     const pType   = isFlat ? 'Flat' : 'Hourly';
     const revStatus = $('je-rev')?.value ?? j.Review_Status ?? '';
+    const rateOverride = getVal('je-rate');
 
     // Use getJobTotals so math is identical everywhere
     // For completed jobs je-hrs is actual hours; for scheduled jobs je-est-hrs is estimated
@@ -1625,6 +1649,7 @@ async function submitJobEdit(btn, markPaid = false) {
       pricingType: pType,
       flatRate:    flatRate,
       hrs:         hrsForCalc,
+      rate:        rateOverride,
       surcharge:   sur,
       addCost:     addCost
     });
@@ -1643,6 +1668,7 @@ async function submitJobEdit(btn, markPaid = false) {
       Surcharge: String(currentSur), Additional_Cost: String(currentAdd),
       Additional_Cost_Notes: addCostNotes || j.Additional_Cost_Notes,
       Review_Status: revStatus,
+      Hourly_Rate: rateOverride !== undefined ? String(rateOverride) : j.Hourly_Rate,
       Total_Amount: tot.toFixed(2)
     });
 
@@ -1818,7 +1844,8 @@ function jeCalc() {
   const t   = getJobTotals(j, {
     pricingType: isFlat ? 'Flat' : 'Hourly',
     flatRate:    $('je-flat')?.value,
-    hrs:         $('je-est-hrs')?.value,
+    hrs:         $('je-est-hrs')?.value || $('je-hrs')?.value,
+    rate:        $('je-rate')?.value,
     surcharge:   $('je-sur')?.value,
     addCost:     $('je-addcost')?.value
   });
@@ -1826,7 +1853,7 @@ function jeCalc() {
   preview.classList.remove('hidden');
   const addNotes = $('je-addcost-notes')?.value.trim() || '';
   let html = `<div style="display:flex;justify-content:space-between;margin-bottom:3px;">
-    <span>${t.isFlat ? 'Flat rate' : 'Labour (' + ($('je-est-hrs')?.value || 0) + ' hrs × $' + t.rate + '/hr)'}</span>
+    <span>${t.isFlat ? 'Flat rate' : 'Labour (' + ($('je-est-hrs')?.value || $('je-hrs')?.value || 0) + ' hrs × $' + t.rate + '/hr)'}</span>
     <span>$${t.base.toFixed(2)}</span></div>`;
   if (t.sur > 0)     html += `<div style="display:flex;justify-content:space-between;margin-bottom:3px;"><span>Surcharge</span><span>$${t.sur.toFixed(2)}</span></div>`;
   if (t.addCost > 0) html += `<div style="display:flex;justify-content:space-between;margin-bottom:3px;"><span>Additional costs${addNotes ? ' — ' + esc(addNotes) : ''}</span><span>$${t.addCost.toFixed(2)}</span></div>`;
@@ -2380,7 +2407,17 @@ function openLEdit(k,i) { S.listMeta={k,i}; if($('m-ledit-t')) $('m-ledit-t').te
 
 async function saveListItem() {
   const v=$('m-ledit-inp')?.value.trim()||'';if(!v){showToast('⚠️ Enter a value');return;}
-  const{k,i}=S.listMeta;const l=gl(k);l[i]=v;S.lists[k]=l;
+  const{k,i}=S.listMeta;const l=gl(k);
+  const oldVal = l[i]; 
+  l[i]=v;S.lists[k]=l;
+  
+  // Smart Fix: Update service price key if a service was renamed
+  if (k === 'services' && S.biz.service_prices && S.biz.service_prices[oldVal] !== undefined) {
+    S.biz.service_prices[v] = S.biz.service_prices[oldVal];
+    delete S.biz.service_prices[oldVal];
+    saveBizConfig(); // Pushes updated JSON to GAS
+  }
+
   if(!S.isDemo)await gasCall({action:'updateList',listKey:k,list:l});
   cacheWrite();
   closeMo('m-ledit');renderAdmin();popLists();showToast('✓ Saved');
@@ -2388,6 +2425,13 @@ async function saveListItem() {
 
 async function delListItem(k,i) {
   const l=gl(k);const r=l.splice(i,1)[0];S.lists[k]=l;
+  
+  // Smart Fix: Nuke the service price if the service is deleted
+  if (k === 'services' && S.biz.service_prices && S.biz.service_prices[r] !== undefined) {
+    delete S.biz.service_prices[r];
+    saveBizConfig(); 
+  }
+
   if(!S.isDemo)await gasCall({action:'updateList',listKey:k,list:l});
   cacheWrite();
   popLists();renderAdmin();showToast('✕ "'+r+'" removed');

@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm run:*)",
+      "Bash(node --check app.js)",
+      "Bash(node --check code.js)",
+      "Bash(git *)"
+    ]
+  }
+}

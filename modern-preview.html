@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Supermom Modernized Preview</title>
+  <link href="https://fonts.googleapis.com/css2?family=Nunito+Sans:wght@400;600;700;800;900&family=Nunito:wght@700;800;900&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --pink: #D4317A; --pink-d: #B02464; --pink-l: #FDF2F7; --pink-b: #F3C5D8;
+      --bg: #F9F7F5; --surface: #FFFFFF; --border: rgba(42,35,32,0.05);
+      --txt: #1F1A18; --txt2: #635852; --txt3: #9E938D;
+      --red: #D92D20; --red-s: #FEF3F2; --red-b: #FEE4E2;
+      --green: #079455; --green-s: #ECFDF3; --green-b: #D1FADF;
+      --blue: #1570EF; --blue-s: #EFF8FF; --blue-b: #D1E9FF;
+      --amber: #DC6803; --amber-s: #FFFAEB; --amber-b: #FEF0C7;
+      --purple: #6941C6; --purple-s: #F9F5FF; --purple-b: #E9D7FE;
+      --orange: #C4320A; --orange-s: #FFF4ED; --orange-b: #FDDCAB;
+      --nav-h: 64px;
+      --hdr-h: 72px;
+      --pad: 16px;
+      --r: 20px; --rsm: 14px;
+      --sh: 0 4px 16px rgba(0,0,0,0.03);
+      --sh-md: 0 12px 32px rgba(42,35,32,0.06);
+    }
+    *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}
+    body{
+      background: #1F1A18;
+      font-family: "Nunito Sans", sans-serif;
+      color: var(--txt);
+      -webkit-font-smoothing: antialiased;
+      display: flex;
+      justify-content: center;
+      min-height: 100vh;
+      padding: 20px;
+    }
+    #app-container {
+      width: 100%;
+      max-width: 480px;
+      background: var(--bg);
+      border-radius: 40px;
+      overflow: hidden;
+      box-shadow: 0 20px 80px rgba(0,0,0,0.4);
+      position: relative;
+      height: 844px; /* iPhone 12/13/14 height */
+      display: flex;
+      flex-direction: column;
+    }
+    header {
+      height: var(--hdr-h);
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 0 var(--pad);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-shrink: 0;
+    }
+    .logo {
+      font-family: "Nunito", sans-serif;
+      font-size: 20px;
+      font-weight: 900;
+      color: var(--txt);
+    }
+    .logo span { color: var(--pink); font-style: italic; }
+    .hb {
+      width: 40px; height: 40px; border-radius: 50%;
+      background: var(--bg); border: 1px solid var(--border);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 18px; color: var(--txt2); cursor: pointer;
+    }
+    
+    #scroll {
+      flex: 1;
+      overflow-y: auto;
+      padding-bottom: 80px;
+    }
+    .view { padding: var(--pad); }
+    
+    h2 { font-family: "Nunito", sans-serif; font-size: 11px; font-weight: 800; color: var(--txt3); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 12px; margin-top: 24px; }
+    h2:first-child { margin-top: 0; }
+
+    /* MODERN CARD (HYBRID FOCUS) */
+    .card {
+      background: var(--surface);
+      border-radius: var(--r);
+      padding: 20px;
+      margin-bottom: 20px;
+      box-shadow: var(--sh-md);
+      position: relative;
+    }
+    
+    .upnext-card {
+      border: 2px solid var(--pink-l);
+      border-radius: 24px;
+      padding: 20px;
+      background: var(--surface);
+    }
+    .badge {
+      background: var(--pink);
+      color: #fff;
+      font-size: 10px;
+      font-weight: 900;
+      padding: 4px 10px;
+      border-radius: 100px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      display: inline-block;
+      margin-bottom: 8px;
+    }
+    .upnext-title { font-size: 18px; font-weight: 900; margin-bottom: 4px; }
+    .upnext-sub { font-size: 13px; color: var(--txt2); margin-bottom: 16px; }
+    
+    .btn {
+      width: 100%; height: 50px; border-radius: 100px;
+      display: flex; align-items: center; justify-content: center;
+      font-weight: 900; text-transform: uppercase; letter-spacing: 0.5px; font-size: 14px;
+      border: none; cursor: pointer; transition: transform 0.1s;
+    }
+    .btn:active { transform: scale(0.97); }
+    .btn-p { background: var(--pink); color: #fff; box-shadow: 0 8px 20px rgba(212,49,122,0.25); }
+
+    /* FLUSH LIST (HYBRID FOCUS) */
+    .list-container {
+      background: var(--surface);
+      border-radius: var(--r);
+      overflow: hidden;
+      margin-bottom: 24px;
+      box-shadow: var(--sh);
+    }
+    .list-item {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 16px var(--pad);
+      border-bottom: 1px solid var(--border);
+      cursor: pointer;
+    }
+    .list-item:last-child { border-bottom: none; }
+    .av {
+      width: 44px; height: 44px; border-radius: 50%;
+      background: var(--pink-l); color: var(--pink);
+      display: flex; align-items: center; justify-content: center;
+      font-weight: 900; font-size: 15px; flex-shrink: 0;
+    }
+    .item-body { flex: 1; }
+    .item-title { font-weight: 800; font-size: 15px; margin-bottom: 2px; }
+    .item-sub { font-size: 12px; color: var(--txt3); }
+    .pill {
+      font-size: 10px; font-weight: 800; text-transform: uppercase; padding: 4px 8px; border-radius: 100px;
+    }
+    .p-red { background: var(--red-s); color: var(--red); }
+    .p-amb { background: var(--amber-s); color: var(--amber); }
+
+    nav {
+      position: absolute; bottom: 0; left: 0; right: 0;
+      height: var(--nav-h); background: var(--surface);
+      border-top: 1px solid var(--border);
+      display: flex; align-items: center; justify-content: space-around;
+      padding-bottom: 10px;
+    }
+    .nav-item { display: flex; flex-direction: column; align-items: center; gap: 4px; color: var(--txt3); }
+    .nav-item.active { color: var(--pink); }
+    .nav-icon { font-size: 20px; }
+    .nav-lbl { font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px; }
+
+    .money-row { display: flex; gap: 12px; margin-bottom: 24px; }
+    .money-card { flex: 1; background: var(--surface); padding: 16px; border-radius: var(--r); box-shadow: var(--sh); }
+    .m-lbl { font-size: 10px; font-weight: 800; color: var(--txt3); text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 4px; }
+    .m-val { font-size: 20px; font-weight: 900; }
+  </style>
+</head>
+<body>
+
+<div id="app-container">
+  <header>
+    <div class="logo">Supermom <span>for Hire</span></div>
+    <div class="hb">↺</div>
+  </header>
+
+  <div id="scroll">
+    <div class="view">
+      
+      <div class="money-row">
+        <div class="money-card">
+          <div class="m-lbl">Owed</div>
+          <div class="m-val" style="color: var(--red);">$420.00</div>
+        </div>
+        <div class="money-card">
+          <div class="m-lbl">Collected</div>
+          <div class="m-val" style="color: var(--green);">$1,250.00</div>
+        </div>
+      </div>
+
+      <h2>Up Next</h2>
+      <div class="card upnext-card">
+        <div class="badge">Today @ 1:30pm</div>
+        <div class="upnext-title">Sarah Jenkins</div>
+        <div class="upnext-sub">Deep Clean · 4.5 hrs est. · Georgetown</div>
+        <button class="btn btn-p">✅ Complete Job</button>
+      </div>
+
+      <h2>Today's Schedule</h2>
+      <div class="list-container">
+        <div class="list-item">
+          <div class="av">SJ</div>
+          <div class="item-body">
+            <div class="item-title">Sarah Jenkins</div>
+            <div class="item-sub">Deep Clean @ 1:30pm</div>
+          </div>
+          <span class="pill p-amb">⚡ ASAP</span>
+        </div>
+        <div class="list-item">
+          <div class="av">MT</div>
+          <div class="item-body">
+            <div class="item-title">Mike Thompson</div>
+            <div class="item-sub">Regular Clean @ 9:00am</div>
+          </div>
+          <span class="pill p-red">⏳ Unpaid</span>
+        </div>
+      </div>
+
+      <h2>Recent Clients</h2>
+      <div class="list-container">
+        <div class="list-item">
+          <div class="av">AB</div>
+          <div class="item-body">
+            <div class="item-title">Alice Brown</div>
+            <div class="item-sub">(905) 555-0123 · Active</div>
+          </div>
+          <div style="color: var(--txt3)">›</div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <nav>
+    <div class="nav-item active">
+      <span class="nav-icon">🏠</span>
+      <span class="nav-lbl">Dash</span>
+    </div>
+    <div class="nav-item">
+      <span class="nav-icon">👥</span>
+      <span class="nav-lbl">Clients</span>
+    </div>
+    <div class="nav-item">
+      <span class="nav-icon">📅</span>
+      <span class="nav-lbl">Book</span>
+    </div>
+    <div class="nav-item">
+      <span class="nav-icon">⚙️</span>
+      <span class="nav-lbl">Admin</span>
+    </div>
+  </nav>
+</div>
+
+</body>
+</html>

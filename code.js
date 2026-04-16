@@ -1,9 +1,10 @@
 /**
- * SUPERMOM FOR HIRE — Backend Core v5.01
+ * SUPERMOM FOR HIRE — Backend Core v5.02
  * v5.00: Short IDs — uid() now generates 6-char base-36 random IDs instead of timestamps.
  *        addClient/addJob use uid() for canonical IDs.
  * v5.01: updateJobDetails now appends a delta payment when a Paid job's total increases,
  *        fixing the case where additional costs were added after payment was already recorded.
+ * v5.02: Version sync with app.js v4.07.
  */
 
 const TZ = 'America/Toronto';
