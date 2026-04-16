@@ -1,7 +1,10 @@
 /**
- * SUPERMOM FOR HIRE — Backend Core v5.00
+ * SUPERMOM FOR HIRE — Backend Core v5.02
  * v5.00: Short IDs — uid() now generates 6-char base-36 random IDs instead of timestamps.
  *        addClient/addJob use uid() for canonical IDs.
+ * v5.01: updateJobDetails now appends a delta payment when a Paid job's total increases,
+ *        fixing the case where additional costs were added after payment was already recorded.
+ * v5.02: Version sync with app.js v4.07.
  */
 
 const TZ = 'America/Toronto';
@@ -201,6 +204,8 @@ function addJob(p) {
 
 function updateJobDetails(p) {
   const id = p.jobId || p.Job_ID;
+  // Read job before updating so we can detect payment gaps
+  const existingJob = p.totalAmount !== undefined ? getRowById(TABS.JOBS, 'Job_ID', id) : null;
   const raw = {
     Service:          p.svc,
     Scheduled_Date:   p.date,
@@ -218,12 +223,35 @@ function updateJobDetails(p) {
     Review_Status:          p.revStatus,
     Follow_Up:              p.followUp
   };
-  // Only write keys that were actually sent â€” prevents partial calls
+  // Only write keys that were actually sent — prevents partial calls
   // (e.g. clearFU, markRevRequested) from blanking unrelated columns
   const update = {};
   for (const k in raw) { if (raw[k] !== undefined) update[k] = raw[k]; }
   updateRow(TABS.JOBS, 'Job_ID', id, update);
-  if (p.markPaid) markInvoicePaid({ jobId: id, method: p.method, ppAmt: p.totalAmount });
+  if (p.markPaid) {
+    markInvoicePaid({ jobId: id, method: p.method, ppAmt: p.totalAmount });
+  } else if (existingJob && existingJob.Payment_Status === 'Paid' && p.totalAmount !== undefined) {
+    // Job is already paid but total changed (e.g. additional cost added after completion).
+    // Check actual PAYMENTS sum — if there's a gap, append a delta payment to cover it.
+    const existingPayments = getRows(TABS.PAYMENTS).filter(
+      r => String(r.Is_Void).toUpperCase() !== 'TRUE' &&
+           String(r.Job_ID).trim() === String(id).trim()
+    );
+    const paidSum  = existingPayments.reduce((s, r) => s + (parseFloat(r.Amount) || 0), 0);
+    const newTotal = parseFloat(p.totalAmount) || 0;
+    const delta    = newTotal - paidSum;
+    if (delta > 0.01) {
+      appendRow(TABS.PAYMENTS, {
+        Payment_ID:     uid('PAY'),
+        Job_ID:         id,
+        Client_ID:      existingJob.Client_ID,
+        Amount:         delta,
+        Payment_Method: existingJob.Payment_Method || 'Cash',
+        Payment_Date:   new Date().toISOString().split('T')[0],
+        Recorded_Date:  new Date().toISOString().split('T')[0]
+      });
+    }
+  }
   return { success: true };
 }
 
