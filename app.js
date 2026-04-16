@@ -1214,7 +1214,7 @@ function navBookJob() {
 function resetBookForm() {
   ['bj-cli','bj-svc','bj-date','bj-time','bj-notes','bj-flat','bj-sur','bj-hrs'].forEach(id=>{const el=$(id);if(el)el.value='';});
   if($('bj-nb'))$('bj-nb').classList.add('hidden');
-  setSched('hard'); setPrice('Hourly'); calc();
+  setSched('hard'); setPrice('Hourly'); updHourlyBtnText(); calc();
   requestAnimationFrame(()=>{const s=$('scroll');if(s)s.scrollTop=0;});
 }
 
@@ -1259,12 +1259,20 @@ function onCliSelect() {
 function onSvcChange() {
   const svc=$('bj-svc')?.value;const hint=$('svc-price-hint');
   if(!svc||!hint)return;
+  updHourlyBtnText();
   const prices=S.biz.service_prices||{};
   if(prices[svc]!==undefined){
     const p=prices[svc];
     hint.textContent=`💡 Custom rate: $${p}/hr`;hint.style.display='';
     setPrice('Hourly');
   }else{hint.style.display='none';}
+}
+
+function updHourlyBtnText() {
+  const svc = $('bj-svc')?.value;
+  const rate = (S.biz.service_prices || {})[svc || ''] || S.biz.rate || 50;
+  const pb = $('pr-h');
+  if (pb) pb.textContent = `⏱ Hourly ($${rate}/hr)`;
 }
 
 function setSched(t) {
@@ -2264,9 +2272,7 @@ function loadBizConfig() {
 
   syncBizUI();
   updateHeaderBrand();
-
-  const pb = $('pr-h');
-  if (pb) pb.textContent = `⏱ Hourly ($${S.biz.rate || 50}/hr)`;
+  updHourlyBtnText();
 }
 
 function syncBizUI() {
