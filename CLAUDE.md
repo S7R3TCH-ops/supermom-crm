@@ -29,7 +29,6 @@ This project uses multiple AI tools. Each has a defined role to avoid overlap an
 
 **Do not break the legacy app while building the new one.**
 
----
 
 ## New Stack (In Progress)
 
@@ -62,7 +61,7 @@ Vercel  →  auto-deploys on every push  →  live URL
 
 | Layer | Tool |
 |---|---|
-| Frontend | Vanilla HTML/CSS/JS — `index.html` + `app.js` v4.07 |
+| Frontend | Vanilla HTML/CSS/JS — `index.html` + `app.js` v4.12 |
 | Backend | Google Apps Script — `code.js` v5.02 |
 | Database | Google Sheets (7 tabs) |
 | Hosting | GitHub Pages — `s7r3tch-ops/supermom-crm` |
@@ -70,7 +69,7 @@ Vercel  →  auto-deploys on every push  →  live URL
 | Logo | `https://lh3.googleusercontent.com/d/1vYV_0VFk2MF8QrZyQ77BKyx4hnpuDqSb` |
 
 ### Legacy Current Versions
-- `app.js` → v4.07
+- `app.js` → v4.12
 - `code.js` → v5.02
 - `index.html` → synced with app.js
 

@@ -1,7 +1,7 @@
 // ============================================================================
 // 1. CONSTANTS, GLOBALS & STATE
 // ============================================================================
-const APP_VERSION = '4.07';
+const APP_VERSION = '4.12';
 
 const GAS_URL = "https://script.google.com/macros/s/AKfycbwmhWli_n6kSgG9LiHWJrZGeZ73uvz7XrgO0G24i6MRyCcdFJ65hCmtY5oPPqCMZ9CEEA/exec";
 
@@ -548,13 +548,18 @@ function renderDash() {
       const hasTime = j.Time && !j.Time.includes('1899');
       const timeRange = hasTime ? fmtTRange(j) : '';
       const hrs = parseFloat(j.Estimated_Hours || 1);
-      const hrsNote = hasTime ? timeRange : '~' + hrs + ' hr' + (hrs !== 1 ? 's' : '');
+      const [tStart, tEnd] = hasTime ? timeRange.split(' → ') : ['—', ''];
+      const hrsNote = !hasTime ? '~' + hrs + ' hr' + (hrs !== 1 ? 's' : '') : '';
+      const col = pd ? 'color:var(--orange);' : isUpNext ? 'color:var(--pink);font-weight:900;' : '';
       return `<div class="today-job" data-action="open-job" data-jid="${esc(j.Job_ID)}" style="${pd?'border-left:3px solid var(--orange);background:rgba(192,88,0,.07);':isUpNext?'border-left:3px solid var(--pink);':''}">
-        <div class="tj-time" style="${pd?'color:var(--orange);':isUpNext?'color:var(--pink);font-weight:900;':''}">${hasTime ? fmtT(j.Time) : '—'}</div>
+        <div class="tj-time" style="display:flex;flex-direction:column;align-items:center;gap:1px;${col}">
+          <span>${tStart}</span>
+          ${tEnd ? `<span style="font-size:11px;font-weight:900;opacity:0.75;line-height:1;">↓</span><span>${tEnd}</span>` : ''}
+        </div>
         <div class="tj-info">
           <div class="tj-name">${esc(fullN(c))}${pd?` <span class="pill p-ora" style="font-size:9px;">⚠️ Past Due</span>`:isUpNext?` <span class="pill p-pink" style="font-size:9px;">⚡ Up Next</span>`:''}</div>
           <div class="tj-svc">${esc(j.Service)}</div>
-          <div style="font-size:11px;color:var(--txt3);margin-top:1px;">${hrsNote}</div>
+          ${hrsNote ? `<div style="font-size:11px;color:var(--txt3);margin-top:1px;">${hrsNote}</div>` : ''}
         </div>
         <button class="btn b-sm b-p" data-action="complete" data-jid="${esc(j.Job_ID)}">✅ Done</button>
       </div>`;
@@ -782,33 +787,15 @@ function openProfile(cid) {
       (c.Phone2?`<div class="ir"><span class="ii">📱</span><div><div class="il">Alt Phone</div><div class="iv"><a href="tel:${esc(c.Phone2)}" style="color:var(--blue);text-decoration:none;font-weight:700;">${esc(formatPhone(c.Phone2))}</a></div></div></div>`:'')+
       (c.Email?`<div class="ir"><span class="ii">✉️</span><div><div class="il">Email</div><div class="iv"><a href="mailto:${esc(c.Email)}" style="color:var(--blue);text-decoration:none;font-weight:700;">${esc(c.Email)}</a></div></div></div>`:'')+
       (addr?`<div class="ir"><span class="ii">📍</span><div><div class="il">Address</div><div class="iv"><a href="${mapsUrl}" target="_blank" style="color:var(--blue);text-decoration:underline;font-weight:700;">${esc(addr)}</a></div></div></div>`:'')+
-      (c.Family_Details?`<div class="ir"><span class="ii">👨‍👩‍👧</span><div><div class="il">Family & Pets</div><div class="iv">${esc(c.Family_Details)}</div></div></div>`:'')+
-      (c.Access_Info?`<div class="ir"><span class="ii">🔑</span><div><div class="il">Access Info</div><div class="iv">${esc(c.Access_Info)}</div></div></div>`:'')+
+      `<div class="ir"><span class="ii">📝</span><div style="flex:1;min-width:0;"><div class="il">General Notes</div><div class="iv" style="${!c.Global_Notes?'color:var(--txt3);font-style:italic;':''}">${esc(c.Global_Notes)||'Nothing noted yet'}</div></div><button class="btn b-xs b-s" style="flex-shrink:0;margin-left:8px;" data-action="openEditNotes">✏️</button></div>`+
+      `<div class="ir"><span class="ii">🔑</span><div style="flex:1;min-width:0;"><div class="il">Access Info</div><div class="iv" style="${!c.Access_Info?'color:var(--txt3);font-style:italic;':''}">${esc(c.Access_Info)||'Nothing noted yet'}</div></div><button class="btn b-xs b-s" style="flex-shrink:0;margin-left:8px;" data-action="openEditAccess">✏️</button></div>`+
+      `<div class="ir"><span class="ii">👨‍👩‍👧</span><div style="flex:1;min-width:0;"><div class="il">Family & Pets</div><div class="iv" style="${!c.Family_Details?'color:var(--txt3);font-style:italic;':''}">${esc(c.Family_Details)||'Nothing noted yet'}</div></div><button class="btn b-xs b-s" style="flex-shrink:0;margin-left:8px;" data-action="openEditFamily">✏️</button></div>`+
       (c.Created_Date?`<div class="ir"><span class="ii">📅</span><div><div class="il">Client Since</div><div class="iv">${fmtDFull(c.Created_Date)}</div></div></div>`:'');
   }
-  
+
   if($('p-jobs')) $('p-jobs').textContent=cj.length;
   if($('p-paid')) $('p-paid').textContent='$'+totPaid.toFixed(2);
   if($('p-owed')) $('p-owed').textContent='$'+totOwed.toFixed(2);
-
-  function noteTile(icon,lbl,val,action){
-    const empty=!val;
-    return`<div class="card" style="padding:14px;margin-bottom:12px;display:flex;align-items:flex-start;gap:12px;">
-      <span style="font-size:20px;flex-shrink:0;">${icon}</span>
-      <div style="flex:1;min-width:0;">
-        <div style="font-size:10px;font-weight:800;color:var(--txt3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;">${lbl}</div>
-        <div style="font-size:13px;color:${empty?'var(--txt3)':'var(--txt)'};font-style:${empty?'italic':'normal'};line-height:1.5;white-space:pre-wrap;">${esc(val)||'Nothing noted yet'}</div>
-      </div>
-      <button class="btn b-xs b-s" style="flex-shrink:0;" data-action="${action}">✏️</button>
-    </div>`;
-  }
-  
-  if($('p-notes-tiles')) {
-    $('p-notes-tiles').innerHTML=
-      noteTile('📝','General Notes',c.Global_Notes,'openEditNotes')+
-      noteTile('🔑','Access Info',c.Access_Info,'openEditAccess')+
-      noteTile('👨‍👩‍👧','Family & Pets',c.Family_Details,'openEditFamily');
-  }
   
   S.profileJobFilter='all';
   renderProfileJobs(cj);
@@ -885,8 +872,8 @@ function profJobRow(j) {
   return `<div class="jr ${tc}" data-action="open-job" data-jid="${esc(j.Job_ID)}">
     <div class="ji">${isPaid ? '✅' : isOverdue ? '🚨' : isSched ? '🔵' : '🚨'}</div>
     <div class="jd">
-      <div class="jn">${esc(j.Service)}</div>
-      <div class="jm">${!sd ? '⚡ ASAP' : fmtD(sd)}${j.Time && !j.Time.includes('1899') && sd ? ' @ ' + fmtT(j.Time) : ''}${hDisplay ? ' · ' + hDisplay : ''}</div>
+      <div class="jn">${esc(j.Service)}${isSched && !isOverdue && j.Time && !j.Time.includes('1899') && sd ? ` <span style="color:var(--pink);font-weight:800;">${fmtTRange(j)}</span>` : ''}</div>
+      <div class="jm"><span style="color:var(--pink);font-weight:800;">${!sd ? '⚡ ASAP' : fmtD(sd)}</span> · ${esc(j.Service)}${(!j.Time || j.Time.includes('1899')) && hDisplay ? ' · ' + hDisplay : ''}</div>
       ${j.Completion_Date && !isSched ? `<div class="jm note">✅ Completed ${fmtD(j.Completion_Date)}</div>` : ''}
       ${!isSched && j.Completion_Notes ? `<div class="jm note">📋 ${esc(j.Completion_Notes).substring(0, 52)}${j.Completion_Notes.length > 52 ? '…' : ''}</div>` : ''}
       ${isSched && j.Job_Notes ? `<div class="jm note">📝 ${esc(j.Job_Notes).substring(0, 52)}${j.Job_Notes.length > 52 ? '…' : ''}</div>` : ''}
@@ -980,8 +967,8 @@ function jrHTML(j, type) {
   return `<div class="jr ${type}" data-action="open-job" data-jid="${esc(j.Job_ID)}">
     <div class="ji">${icons[type] || '📋'}</div>
     <div class="jd">
-      <div class="jn">${esc(fullN(c))}</div>
-      <div class="jm">${esc(j.Service)} · ${dStr}${j.Time && !j.Time.includes('1899') && sd ? ' @ ' + fmtT(j.Time) : ''}${hDisplay ? ' · ' + hDisplay : ''}</div>
+      <div class="jn">${esc(fullN(c))}${j.Job_Status !== 'Completed' && type !== 'overdue' && j.Time && !j.Time.includes('1899') && sd ? ` <span style="color:var(--pink);font-weight:800;">${fmtTRange(j)}</span>` : ''}</div>
+      <div class="jm"><span style="color:var(--pink);font-weight:800;">${dStr}</span> · ${esc(j.Service)}${j.Job_Status !== 'Completed' && (!j.Time || j.Time.includes('1899')) && hDisplay ? ' · ' + hDisplay : ''}</div>
       ${showCd ? `<div class="jm note">✅ Completed ${fmtD(cd)}</div>` : ''}
       ${noteText ? `<div class="jm note">📝 ${esc(noteText).substring(0, 48)}${noteText.length > 48 ? '…' : ''}</div>` : ''}
       ${type === 'overdue' ? `<div class="jm note" style="color:var(--orange);font-style:normal;font-weight:800;">Was ${fmtD(sd)} — tap to update</div>` : ''}
@@ -1322,6 +1309,23 @@ function calc() {
   if($('c-tot')) $('c-tot').textContent = '$' + t.total.toFixed(2);
 }
 
+function calcBookTimeRange() {
+  const el = $('bj-time-range');
+  if (!el) return;
+  const timeVal = $('bj-time')?.value;
+  const hrs = parseFloat($('bj-hrs')?.value || 0);
+  if (timeVal && hrs > 0) {
+    try {
+      const [h, m] = timeVal.split(':');
+      const start = new Date(); start.setHours(parseInt(h), parseInt(m), 0, 0);
+      const end = new Date(start.getTime() + hrs * 3600000);
+      const fmt = d => { const hr=d.getHours(),mn=d.getMinutes(); return `${hr%12||12}${mn?':'+String(mn).padStart(2,'0'):''}${hr>=12?'pm':'am'}`; };
+      el.textContent = fmt(start) + ' → ' + fmt(end);
+      el.classList.remove('hidden');
+    } catch(e) { el.classList.add('hidden'); }
+  } else { el.classList.add('hidden'); }
+}
+
 function checkTimeConflict() {
   const dateVal=$('bj-date')?.value;const timeVal=$('bj-time')?.value;
   const box=$('bj-conflict');if(!box)return;
@@ -1532,7 +1536,8 @@ function openJobModal(jid) {
       <div class="fg"><label class="fl">Service</label>
         <select class="fs" id="je-svc">${gl('services').map(s=>`<option ${j.Service===s?'selected':''}>${esc(s)}</option>`).join('')}</select></div>
       <div class="fg"><label class="fl">Scheduled Date</label><input class="fi" id="je-date" type="date" value="${esc(sd||'')}"></div>
-      <div class="fg"><label class="fl">Start Time</label><input class="fi" id="je-time" type="time" value="${esc(j.Time&&!j.Time.includes('1899')?j.Time:'09:00')}"></div>
+      <div class="fg"><label class="fl">Start Time</label><input class="fi" id="je-time" type="time" value="${esc(j.Time&&!j.Time.includes('1899')?j.Time:'09:00')}" oninput="jeCalc()"></div>
+      <div id="je-time-range" class="hidden" style="text-align:center;font-family:'Nunito',sans-serif;font-weight:900;font-size:16px;color:var(--pink);margin:-8px 0 14px;"></div>
       <div class="fg"><label class="fl">Pricing Type</label>
         <div class="tr">
           <button class="tb ${j.Pricing_Type==='Hourly'?'on':''}" id="je-pr-h" onclick="jeSetPrice('Hourly')">⏱ Hourly</button>
@@ -1846,6 +1851,21 @@ function jeSetPrice(t) {
 function jeCalc() {
   const preview = $('je-calc-preview');
   if (!preview) return;
+  const trEl = $('je-time-range');
+  if (trEl) {
+    const timeVal = $('je-time')?.value;
+    const hrs = parseFloat($('je-est-hrs')?.value || $('je-hrs')?.value || 0);
+    if (timeVal && hrs > 0) {
+      try {
+        const [h, m] = timeVal.split(':');
+        const start = new Date(); start.setHours(parseInt(h), parseInt(m), 0, 0);
+        const end = new Date(start.getTime() + hrs * 3600000);
+        const fmt = d => { const hr=d.getHours(),mn=d.getMinutes(); return `${hr%12||12}${mn?':'+String(mn).padStart(2,'0'):''}${hr>=12?'pm':'am'}`; };
+        trEl.textContent = fmt(start) + ' → ' + fmt(end);
+        trEl.classList.remove('hidden');
+      } catch(e) { trEl.classList.add('hidden'); }
+    } else { trEl.classList.add('hidden'); }
+  }
   const isFlat = $('je-pr-f')?.classList.contains('on');
   const jid = S.jobModal;
   const j   = getJob(jid) || {};

@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <!--
-  SUPERMOM FOR HIRE — CRM v4.07 (Production Release Testing)
+  SUPERMOM FOR HIRE — CRM v4.09 (Production Release Testing)
 -->
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
@@ -542,7 +542,7 @@ body.modal-open #scroll{overflow:hidden;}
       <div class="sh-hint" id="sc-hint">Client confirmed this specific date.</div>
     </div>
     <div id="bj-date-g" class="fg"><label class="fl" id="bj-dl">Scheduled Date *</label><input class="fi" id="bj-date" type="date" oninput="checkTimeConflict()"></div>
-    <div id="bj-time-g" class="fg"><label class="fl">Start Time</label><input class="fi" id="bj-time" type="time" value="09:00" oninput="checkTimeConflict()"></div>
+    <div id="bj-time-g" class="fg"><label class="fl">Start Time</label><input class="fi" id="bj-time" type="time" value="09:00" oninput="checkTimeConflict();calcBookTimeRange()"></div>
     <div id="bj-conflict" class="hidden" style="background:var(--amber-s);border:1.5px solid var(--amber-b);border-radius:12px;padding:11px 13px;margin-bottom:14px;font-size:13px;color:var(--amber);line-height:1.5;"></div>
     <div class="fg">
       <label class="fl">Pricing</label>
@@ -552,7 +552,8 @@ body.modal-open #scroll{overflow:hidden;}
       </div>
       <div class="fh" id="svc-price-hint" style="display:none;color:var(--green);font-weight:800;"></div>
     </div>
-    <div id="bj-hrs-g" class="fg"><label class="fl">Estimated Hours</label><input class="fi" id="bj-hrs" type="text" inputmode="decimal" pattern="[0-9\.]*" placeholder="e.g. 2" oninput="calc()"></div>
+    <div id="bj-hrs-g" class="fg"><label class="fl">Estimated Hours</label><input class="fi" id="bj-hrs" type="text" inputmode="decimal" pattern="[0-9\.]*" placeholder="e.g. 2" oninput="calc();calcBookTimeRange()"></div>
+    <div id="bj-time-range" class="hidden" style="text-align:center;font-family:'Nunito',sans-serif;font-weight:900;font-size:16px;color:var(--pink);margin:-8px 0 14px;"></div>
     <div id="bj-flat-g" class="fg" class="hidden">
       <label class="fl">Flat Rate Amount (before tax) *</label>
       <input class="fi" id="bj-flat" type="text" inputmode="decimal" pattern="[0-9\.]*" placeholder="e.g. 200" oninput="calc()">
