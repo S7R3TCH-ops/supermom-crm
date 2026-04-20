@@ -1,7 +1,7 @@
 // ============================================================================
 // 1. CONSTANTS, GLOBALS & STATE
 // ============================================================================
-const APP_VERSION = '4.12';
+const APP_VERSION = '4.13';
 
 const GAS_URL = "https://script.google.com/macros/s/AKfycbwmhWli_n6kSgG9LiHWJrZGeZ73uvz7XrgO0G24i6MRyCcdFJ65hCmtY5oPPqCMZ9CEEA/exec";
 
@@ -536,7 +536,25 @@ function renderDash() {
       return (a.Time || '').localeCompare(b.Time || '');
     });
 
-  if($('t-ct')) $('t-ct').textContent = todayJobs.length ? todayJobs.length + ' job(s) scheduled today' : 'No jobs today — enjoy your day! 🌸';
+  const VICTORY_LINES = [
+    "Killed it today, Supermom! 💪",
+    "You crushed it. Time to Supermom yourself. 🛁",
+    "All done! Sandra: 1, Today: 0. 🏆",
+    "Board's clear. Go be a regular human for 5 mins. 😂",
+    "Mic drop. All jobs done. 🎤",
+    "Today's shift? Owned. 🦸‍♀️",
+    "Zero jobs remaining. Hero status: confirmed. ✨",
+    "You showed up. You delivered. Legendary. 🌟",
+    "Clean sweep! Supermom does it again. 🧹",
+    "Jobs? Demolished. You? Unstoppable. 🔥"
+  ];
+  const completedToday = S.jobs.filter(j => j.Job_Status === 'Completed' && j.Completion_Date === tod);
+  const todayCountText = todayJobs.length
+    ? todayJobs.length + ' job(s) scheduled today'
+    : completedToday.length
+      ? VICTORY_LINES[Math.floor(Math.random() * VICTORY_LINES.length)]
+      : 'No jobs today — enjoy your day! 🌸';
+  if($('t-ct')) $('t-ct').textContent = todayCountText;
   
   const upNextId = todayJobs.find(j => !j._pastDue)?.Job_ID || null;
   const tjList = $('today-jobs-list');
