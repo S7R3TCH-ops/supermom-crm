@@ -1,7 +1,7 @@
 // ============================================================================
 // 1. CONSTANTS, GLOBALS & STATE
 // ============================================================================
-const APP_VERSION = '4.12';
+const APP_VERSION = '4.13';
 
 const GAS_URL = "https://script.google.com/macros/s/AKfycbwmhWli_n6kSgG9LiHWJrZGeZ73uvz7XrgO0G24i6MRyCcdFJ65hCmtY5oPPqCMZ9CEEA/exec";
 
@@ -956,26 +956,30 @@ function jrHTML(j, type) {
                  : j.Job_Status === 'Completed' && j.Completion_Notes ? j.Completion_Notes
                  : '';
 
-  // Prepaid note line — shows for any non-completed prepaid job
+  // Prepaid note line — shows for any non-completed prepaid job (no dollar amounts on home page)
   let ppNote = '';
   if (isFullPre) {
-    ppNote = `<div class="jm note" style="color:var(--purple);font-style:normal;font-weight:800;">💜 Paid in full${prePaidAmt > 0 ? ' · $' + prePaidAmt.toFixed(2) : ''}${j.PrePaid_Reason ? ' · ' + esc(j.PrePaid_Reason) : ''}</div>`;
+    ppNote = `<div class="jm note" style="color:var(--purple);font-style:normal;font-weight:800;">💜 Paid in full${j.PrePaid_Reason ? ' · ' + esc(j.PrePaid_Reason) : ''}</div>`;
   } else if (isPartialPre && prePaidAmt > 0) {
-    ppNote = `<div class="jm note" style="color:var(--purple);font-style:normal;font-weight:800;">💜 $${prePaidAmt.toFixed(2)} deposit · <span style="color:var(--red);">$${(totalJobAmt - prePaidAmt).toFixed(2)} owed at door</span></div>`;
+    ppNote = `<div class="jm note" style="color:var(--purple);font-style:normal;font-weight:800;">💜 Deposit paid · <span style="color:var(--red);">balance due at door</span></div>`;
   }
+
+  const hasTime = j.Time && !j.Time.includes('1899');
+  const schedTime = (hasTime && (sd || isASAP)) ? fmtTRange(j) : hDisplay;
+  const unpaidBadge = type === 'owed' ? `<span class="pill p-red">● UNPAID</span>` : '';
 
   return `<div class="jr ${type}" data-action="open-job" data-jid="${esc(j.Job_ID)}">
     <div class="ji">${icons[type] || '📋'}</div>
     <div class="jd">
-      <div class="jn">${esc(fullN(c))}${j.Job_Status !== 'Completed' && type !== 'overdue' && j.Time && !j.Time.includes('1899') && sd ? ` <span style="color:var(--pink);font-weight:800;">${fmtTRange(j)}</span>` : ''}</div>
-      <div class="jm"><span style="color:var(--pink);font-weight:800;">${dStr}</span> · ${esc(j.Service)}${j.Job_Status !== 'Completed' && (!j.Time || j.Time.includes('1899')) && hDisplay ? ' · ' + hDisplay : ''}</div>
+      <div class="jn">${esc(fullN(c))}${j.Service ? `<span class="jn-svc"> · ${esc(j.Service)}</span>` : ''}</div>
+      <div class="jm-sched"><span class="jms-date">${dStr}</span>${schedTime ? `<span class="jms-sep">·</span><span class="jms-time">${schedTime}</span>` : ''}</div>
       ${showCd ? `<div class="jm note">✅ Completed ${fmtD(cd)}</div>` : ''}
       ${noteText ? `<div class="jm note">📝 ${esc(noteText).substring(0, 48)}${noteText.length > 48 ? '…' : ''}</div>` : ''}
       ${type === 'overdue' ? `<div class="jm note" style="color:var(--orange);font-style:normal;font-weight:800;">Was ${fmtD(sd)} — tap to update</div>` : ''}
       ${ppNote}
     </div>
     <div class="jr-right">
-      <div style="display:flex;align-items:center;gap:4px;justify-content:flex-end;white-space:nowrap;">${pillHtml}<span class="ja">$${amt.toFixed(2)}</span></div>
+      <div style="display:flex;align-items:center;gap:4px;justify-content:flex-end;white-space:nowrap;">${pillHtml}${unpaidBadge}</div>
       ${btnHtml}
     </div>
   </div>`;
