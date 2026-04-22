@@ -61,7 +61,7 @@ Vercel  →  auto-deploys on every push  →  live URL
 
 | Layer | Tool |
 |---|---|
-| Frontend | Vanilla HTML/CSS/JS — `index.html` + `app.js` v4.12 |
+| Frontend | Vanilla HTML/CSS/JS — `index.html` + `app.js` v4.13 |
 | Backend | Google Apps Script — `code.js` v5.02 |
 | Database | Google Sheets (7 tabs) |
 | Hosting | GitHub Pages — `s7r3tch-ops/supermom-crm` |
@@ -69,7 +69,7 @@ Vercel  →  auto-deploys on every push  →  live URL
 | Logo | `https://lh3.googleusercontent.com/d/1vYV_0VFk2MF8QrZyQ77BKyx4hnpuDqSb` |
 
 ### Legacy Current Versions
-- `app.js` → v4.12
+- `app.js` → v4.13
 - `code.js` → v5.02
 - `index.html` → synced with app.js
 
@@ -103,6 +103,16 @@ Vercel  →  auto-deploys on every push  →  live URL
 Every time `app.js` is modified → bump version + update above.
 Every time `code.js` is modified → bump version + update above.
 `index.html` tracks `app.js` — update whenever app.js changes.
+
+### Legacy Home Page Card Layout (v4.13)
+The `jrHTML()` function renders all home page job cards. Layout rules — do not revert:
+- **Line 1:** Client name + `· Service` (service as soft `.jn-svc` secondary label, same line)
+- **Line 2 (`.jm-sched`):** Date + time range (or est. hours if no time set) — bigger/bolder, both in pink. Never inline with name.
+- **Right side:** Status pill only (📅 BOOKED, ✅ DONE, etc.). No dollar amounts.
+- **`owed` cards only:** show `● UNPAID` pill in red in addition to any status pill.
+- **All other card types:** zero payment info on home page — amounts live in client profile only.
+- **Prepaid notes:** say "Paid in full" or "Deposit paid · balance due at door" — no dollar figures.
+- **`profJobRow()`** (client profile page) is separate — still shows full amounts there. Do not confuse the two.
 
 ### Legacy To-Do (Still Active)
 - [ ] `Payment_Status` stale after payment voided (low urgency — no UI void path)
