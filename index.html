@@ -454,8 +454,8 @@ body.modal-open #scroll{overflow:hidden;}
     <button class="tb" id="mf-all" onclick="setMoneyFilter('all')" style="flex:none;padding:10px 16px;min-height:36px;font-size:12px;">All Time</button>
   </div>
   <div class="money-row">
-    <div class="mc red" onclick="showOwedList()" style="cursor:pointer;"><div class="mc-lbl">💰 Owed</div><div class="mc-val" id="m-owed">$0</div><div class="mc-sub" id="m-owed-s">0 unpaid</div></div>
-    <div class="mc green" onclick="showCollectedList()" style="cursor:pointer;"><div class="mc-lbl">✅ Collected</div><div class="mc-val" id="m-paid">$0</div><div class="mc-sub" id="m-paid-s">0 paid</div></div>
+    <div class="mc red" onclick="showOwedList()" style="cursor:pointer;"><div class="mc-lbl">💰 Owed</div><div class="mc-val" id="m-owed" onclick="toggleMoney(event, 'Owed')">$****</div><div class="mc-sub" id="m-owed-s">0 unpaid</div></div>
+    <div class="mc green" onclick="showCollectedList()" style="cursor:pointer;"><div class="mc-lbl">✅ Collected</div><div class="mc-val" id="m-paid" onclick="toggleMoney(event, 'Paid')">$****</div><div class="mc-sub" id="m-paid-s">0 paid</div></div>
   </div>
   <div class="card" style="padding:14px;margin-bottom:14px;">
     <div style="font-size:10px;font-weight:800;color:var(--txt3);text-transform:uppercase;letter-spacing:.8px;margin-bottom:2px;">4-Week Earnings</div>

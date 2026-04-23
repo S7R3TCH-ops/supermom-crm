@@ -6,3 +6,11 @@ node_modules/
 .clasprc.json
 .clasp.json
 
+# Environment / secrets — never commit
+.env
+.env.local
+.env.*.local
+
+# Sensitive docs with API keys / passwords
+docs/Supermom APIs and Directories.txt
+

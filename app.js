@@ -39,7 +39,8 @@ let S = {
   jobModal: null, followUp: 'No', payNow: false, reqRev: false,
   listMeta: null, notesMeta: null, isDemo: false, 
   showAllSched: false, showAllArc: false, showAllOwed: false, showAllUnschd: false, showAllOver: false, showAllFu: false, showAllRev: false, showAllLead: false, moneyFilter: 'month',
-  profileJobFilter: 'all'
+  profileJobFilter: 'all',
+  showMoneyOwed: false, showMoneyPaid: false
 };
 
 let _isSaving = false;
@@ -507,9 +508,9 @@ function renderDash() {
   const owedJobs = S.jobs.filter(j => j.Job_Status === 'Completed' && !isPaidJob(j));
   const totalOwed = owedJobs.reduce((sum, j) => sum + parseMoney(j.Total_Amount), 0);
 
-  if($('m-owed')) $('m-owed').textContent = '$' + totalOwed.toFixed(2);
+  if($('m-owed')) $('m-owed').textContent = S.showMoneyOwed ? '$' + totalOwed.toFixed(2) : '$****';
   if($('m-owed-s')) $('m-owed-s').textContent = owedJobs.length + ' unpaid';
-  if($('m-paid')) $('m-paid').textContent = '$' + totalCollected.toFixed(2);
+  if($('m-paid')) $('m-paid').textContent = S.showMoneyPaid ? '$' + totalCollected.toFixed(2) : '$****';
   if($('m-paid-s')) $('m-paid-s').textContent = displayPaid.length + (S.moneyFilter === 'month' ? ' this month' : ' total');
 
   if($('mf-month')) $('mf-month').className = S.moneyFilter === 'month' ? 'tb on' : 'tb';
@@ -610,6 +611,12 @@ function renderDash() {
 }
 
 function setMoneyFilter(f)  { S.moneyFilter=f;     renderDash(); }
+function toggleMoney(e, type) {
+  if (e) e.stopPropagation();
+  const key = 'showMoney' + type;
+  S[key] = !S[key];
+  renderDash();
+}
 function showAllSched()     { S.showAllSched=true;  renderDash(); }
 function showAllArchived()  { S.showAllArc=true;    renderDash(); }
 function showAllOwed()      { S.showAllOwed=true;   renderDash(); }

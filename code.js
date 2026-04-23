@@ -7,11 +7,11 @@
  * v5.02: Version sync with app.js v4.07.
  */
 
-const TZ = 'America/Toronto';
-const LOCK_TIMEOUT = 15000;
-const SS = SpreadsheetApp.getActiveSpreadsheet();
+var TZ = 'America/Toronto';
+var LOCK_TIMEOUT = 15000;
+var SS = SpreadsheetApp.getActiveSpreadsheet();
 
-const TABS = {
+var TABS = {
   CONFIG:   '00_CONFIG',
   CLIENTS:  '01_CLIENTS',
   JOBS:     '02_JOBS',
@@ -451,14 +451,19 @@ function updateRow(tabName, idCol, idVal, updateObj) {
   const data     = sheet.getDataRange().getValues();
   const headers  = data[0];
   const colIndex = headers.indexOf(idCol);
-  const rowIndex = data.findIndex(r => String(r[colIndex]).trim() === String(idVal).trim());
-  if (rowIndex === -1) return false;
-  const rowNum = rowIndex + 1;
-  for (const key in updateObj) {
-    const cIdx = headers.indexOf(key);
-    if (cIdx > -1) sheet.getRange(rowNum, cIdx + 1).setValue(updateObj[key]);
+  let updated    = false;
+
+  for (let i = 1; i < data.length; i++) {
+    if (String(data[i][colIndex]).trim() === String(idVal).trim()) {
+      updated = true;
+      const rowNum = i + 1;
+      for (const key in updateObj) {
+        const cIdx = headers.indexOf(key);
+        if (cIdx > -1) sheet.getRange(rowNum, cIdx + 1).setValue(updateObj[key]);
+      }
+    }
   }
-  return true;
+  return updated;
 }
 
 function upsertConfig(cat, key, val) {
@@ -473,4 +478,85 @@ function upsertConfig(cat, key, val) {
 
 function uid(pfx) {
   return pfx + '_' + Math.random().toString(36).slice(2, 8);
+}
+
+/**
+ * MAINTENANCE: Merge Duplicate Profiles
+ * Finds all clients matching nameToMatch, picks the first one as primary,
+ * re-links all jobs/payments from duplicates to primary, and soft-deletes duplicates.
+ * Run this manually from the GAS Editor.
+ */
+function mergeLeckieProfiles() {
+  const nameToMatch = "Leckie";
+  console.log("Starting merge for: " + nameToMatch);
+  
+  const allClients = getRows(TABS.CLIENTS);
+  const matches = allClients.filter(c => 
+    (String(c.First_Name + " " + c.Last_Name).includes(nameToMatch) || 
+     String(c.Last_Name).includes(nameToMatch)) &&
+    String(c.Is_Deleted).toUpperCase() !== 'TRUE'
+  );
+
+  if (matches.length < 2) {
+    console.log("No duplicates found for " + nameToMatch);
+    return;
+  }
+
+  const primary = matches[0];
+  const duplicates = matches.slice(1);
+  const primaryId = primary.Client_ID;
+
+  console.log("Primary Profile: " + primary.First_Name + " " + primary.Last_Name + " (" + primaryId + ")");
+
+  duplicates.forEach(dup => {
+    const dupId = dup.Client_ID;
+    console.log("Merging duplicate: " + dup.First_Name + " " + dup.Last_Name + " (" + dupId + ")");
+
+    // 1. Re-link Jobs
+    const jobSheet = SS.getSheetByName(TABS.JOBS);
+    const jobData = jobSheet.getDataRange().getValues();
+    const jobHeaders = jobData[0];
+    const jobCidIdx = jobHeaders.indexOf('Client_ID');
+    for (let i = 1; i < jobData.length; i++) {
+      if (String(jobData[i][jobCidIdx]).trim() === String(dupId).trim()) {
+        jobSheet.getRange(i + 1, jobCidIdx + 1).setValue(primaryId);
+        console.log("  Re-linked job on row " + (i + 1));
+      }
+    }
+
+    // 2. Re-link Payments
+    const paySheet = SS.getSheetByName(TABS.PAYMENTS);
+    const payData = paySheet.getDataRange().getValues();
+    const payHeaders = payData[0];
+    const payCidIdx = payHeaders.indexOf('Client_ID');
+    for (let i = 1; i < payData.length; i++) {
+      if (String(payData[i][payCidIdx]).trim() === String(dupId).trim()) {
+        paySheet.getRange(i + 1, payCidIdx + 1).setValue(primaryId);
+        console.log("  Re-linked payment on row " + (i + 1));
+      }
+    }
+
+    // 3. Re-link Invoices
+    const invSheet = SS.getSheetByName(TABS.INVOICES);
+    if (invSheet) {
+      const invData = invSheet.getDataRange().getValues();
+      const invHeaders = invData[0];
+      const invCidIdx = invHeaders.indexOf('Client_ID');
+      if (invCidIdx > -1) {
+        for (let i = 1; i < invData.length; i++) {
+          if (String(invData[i][invCidIdx]).trim() === String(dupId).trim()) {
+            invSheet.getRange(i + 1, invCidIdx + 1).setValue(primaryId);
+            console.log("  Re-linked invoice on row " + (i + 1));
+          }
+        }
+      }
+    }
+
+    // 4. Soft-delete the duplicate client profile
+    // This will now hit ALL rows with this dupId thanks to the updateRow fix.
+    updateRow(TABS.CLIENTS, 'Client_ID', dupId, { Is_Deleted: 'TRUE' });
+    console.log("  Marked duplicate profile " + dupId + " as deleted.");
+  });
+
+  console.log("Merge complete!");
 }

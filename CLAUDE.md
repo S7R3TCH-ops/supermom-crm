@@ -11,7 +11,7 @@ This project uses multiple AI tools. Each has a defined role to avoid overlap an
 |---|---|
 | **Claude (this)** | Primary architect + code builder. Maintains this file. Owns legacy app fixes and new app build via Claude Code CLI. |
 | **Gemini** | Second opinion, schema review, strategy input. Suggestions must be validated against this doc before implementing. |
-| **Google Stitch** | UI screen generation only. Outputs are fed into Claude Code as a starting point — not used directly. |
+| **Google Stitch** | UI screen generation — optional. Claude Code can design and build directly from the handoff doc. |
 
 **Rule:** If Gemini or any other AI suggests something that conflicts with decisions documented here, flag it and discuss before changing anything. This doc reflects confirmed decisions only.
 
@@ -25,7 +25,7 @@ This project uses multiple AI tools. Each has a defined role to avoid overlap an
 ## Current Status
 **Two parallel tracks running simultaneously:**
 - **Legacy app** (GAS/Sheets) — Sandra is actively using this. Still being maintained and improved.
-- **New app** (Supabase/React/Vercel) — In active rebuild. Schema is live in Supabase. Frontend not yet started.
+- **New app** (Supabase/React/Vercel) — Schema deployed, design assets ready, frontend build is next.
 
 **Do not break the legacy app while building the new one.**
 
@@ -38,7 +38,7 @@ This project uses multiple AI tools. Each has a defined role to avoid overlap an
 | Auth | Supabase Auth | ⬜ Not yet configured |
 | Backend logic | Supabase RPC functions | ✅ In schema |
 | Frontend | React + Vite + Tailwind | ⬜ Not yet started |
-| UI Scaffold | Google Stitch (feeds into Claude Code) | ⬜ Not yet started |
+| UI Scaffold | Google Stitch or Claude Code (design-first or code-first) | ✅ Design assets in `docs/` — Stitch optional |
 | **Builder** | **Claude Code CLI** — writes + manages all code | ⬜ Not yet started |
 | Hosting | Vercel (auto-deploys from GitHub on push) | ⬜ Not yet configured |
 | AI agent hooks | Supabase + Claude Code CLI | ⬜ Planned |
@@ -54,6 +54,39 @@ GitHub repo  →  Claude Code pushes code here
 Vercel  →  auto-deploys on every push  →  live URL
 ```
 **Vercel = hosting. Claude Code = builder. Not the same thing.**
+
+### New App Design Assets (Read These Before Building UI)
+
+All design output lives in `docs/`:
+
+| File | What it contains |
+|---|---|
+| `docs/App v2 Handoff April 22.html` | **Primary design reference.** Full design token system: colors, gradients, typography (Fraunces + Inter), shadows, border radii, component specs. Read this first. |
+| `docs/stitch_supermom_crm_saas_v2.0/.../aura_supermom/DESIGN.md` | Stitch design system doc — "Curated Sanctuary" aesthetic, color palette, component rules |
+| `docs/stitch_supermom_crm_saas_v2.0/.../intelligence_dashboard_tightened_2/code.html` | Stitch HTML output — dashboard screen |
+| `docs/stitch_supermom_crm_saas_v2.0/.../job_booking_tightened/code.html` | Stitch HTML output — job booking screen |
+| `docs/stitch_supermom_crm_saas_v2.0/.../intelligence_dashboard_tightened_[1-4]/screen.png` | Dashboard design iterations (visual reference) |
+
+**Design system summary (from handoff):**
+- Brand pink: `#E91E6A` — gradients from `#FF4D96` → `#E91E6A` → `#B01550`
+- Dark hero: `#1A0A12` (plum-dark)
+- Fonts: `Fraunces` (display/serif) + `Inter` (UI) + `DM Mono` (mono)
+- Cards: `border-radius: 16px`, `border: 1.5px solid #FFD6E8`, `box-shadow: 0 2px 12px rgba(233,30,106,.08)`
+- No hard borders for layout — use background color shifts instead
+
+### Supabase Connection
+
+- **Project host:** `db.lskzzsjmmtsosfneuovt.supabase.co`
+- **Anon/public key:** `sb_publishable_HIMt19mOuS7eHBeb7WhNkQ_UFhgLh70`
+- **Password:** In `.env.local` (never commit) — format: `VITE_SUPABASE_PASSWORD=...`
+- **Full connection string pattern:** `postgresql://postgres:[PASSWORD]@db.lskzzsjmmtsosfneuovt.supabase.co:5432/postgres`
+
+**.env.local for the new React app:**
+```
+VITE_SUPABASE_URL=https://lskzzsjmmtsosfneuovt.supabase.co
+VITE_SUPABASE_ANON_KEY=sb_publishable_HIMt19mOuS7eHBeb7WhNkQ_UFhgLh70
+```
+Password goes in a separate secure location — not in any env file committed to git.
 
 ---
 
@@ -160,6 +193,7 @@ The `jrHTML()` function renders all home page job cards. Layout rules — do not
 
 ### Schema File
 `supermom_schema_v4_1.sql` — deployed version, source of truth.
+**Note:** This file is NOT in the repo. To get the current schema, export it from the Supabase dashboard: Database → Backups or use `supabase db dump`. Do this before starting the frontend build so Claude Code can reference it.
 
 ---
 
@@ -190,16 +224,14 @@ The `jrHTML()` function renders all home page job cards. Layout rules — do not
 ## Project Roadmap
 
 ### Phase 1 — New App (Now)
+- [x] Google Stitch — scaffold UI screens (done — `docs/` has design handoff + HTML screens)
+- [ ] Export schema SQL from Supabase dashboard → add to repo as `supermom_schema_v4_1.sql`
+- [ ] New GitHub repo for React app (separate from legacy `s7r3tch-ops/supermom-crm`)
+- [ ] Vercel project setup — connect to new GitHub repo
+- [ ] Scaffold React + Vite + Tailwind — use `docs/App v2 Handoff April 22.html` as design reference
+- [ ] Create `.env.local` with Supabase URL + anon key (never commit)
+- [ ] Wire Supabase JS client (`@supabase/supabase-js`)
 - [ ] Set up Supabase Auth — seed Sandra + Joel user rows
-- [ ] New GitHub repo for React app
-- [ ] Vercel project setup — connect to GitHub repo
-- [ ] **Google Stitch — scaffold UI screens** <- IN PROGRESS
-  - Prompt with: mobile-first, solo life-coach/organizer CRM, card-based job list, bottom nav
-  - Minimum screens: Dashboard, Client List, Client Profile, Job List, Add/Edit Job, Job Detail
-  - Export HTML/Tailwind code from each screen — feeds Claude Code next session
-- [ ] Feed Stitch output into Claude Code CLI
-- [ ] React + Vite + Tailwind frontend build
-- [ ] Wire Supabase JS client
 - [ ] Core CRUD: clients, jobs, payments
 - [ ] Dashboard + financial summaries
 - [ ] End-to-end test with Sandra on real data
