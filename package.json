@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "description": "Supermom for Hire CRM",
   "scripts": {
-    "start": "npx serve . -p 3000",
+    "start": "npx -y http-server . -p 3000",
     "login": "clasp login",
     "push": "clasp push",
     "deploy": "clasp push && clasp deploy"
