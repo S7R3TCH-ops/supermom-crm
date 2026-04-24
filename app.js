@@ -3,7 +3,12 @@
 // ============================================================================
 const APP_VERSION = '4.13';
 
-const GAS_URL = "https://script.google.com/macros/s/AKfycbwmhWli_n6kSgG9LiHWJrZGeZ73uvz7XrgO0G24i6MRyCcdFJ65hCmtY5oPPqCMZ9CEEA/exec";
+// ENVIRONMENT TOGGLE
+const IS_TEST = false; // Set to true to use the Development Sandbox (1N0wTq...)
+const PROD_URL = "https://script.google.com/macros/s/AKfycbwmhWli_n6kSgG9LiHWJrZGeZ73uvz7XrgO0G24i6MRyCcdFJ65hCmtY5oPPqCMZ9CEEA/exec";
+const TEST_URL = "https://script.google.com/macros/s/AKfycby_REPLACEME_TESTER_URL/exec";
+
+const GAS_URL = IS_TEST ? TEST_URL : PROD_URL;
 
 const DL = {
   services: ['Deep Clean','Regular Clean','Move In / Move Out','Post-Renovation','Organization',
@@ -39,7 +44,8 @@ let S = {
   jobModal: null, followUp: 'No', payNow: false, reqRev: false,
   listMeta: null, notesMeta: null, isDemo: false, 
   showAllSched: false, showAllArc: false, showAllOwed: false, showAllUnschd: false, showAllOver: false, showAllFu: false, showAllRev: false, showAllLead: false, moneyFilter: 'month',
-  profileJobFilter: 'all'
+  profileJobFilter: 'all',
+  showMoneyOwed: false, showMoneyPaid: false
 };
 
 let _isSaving = false;
@@ -507,9 +513,9 @@ function renderDash() {
   const owedJobs = S.jobs.filter(j => j.Job_Status === 'Completed' && !isPaidJob(j));
   const totalOwed = owedJobs.reduce((sum, j) => sum + parseMoney(j.Total_Amount), 0);
 
-  if($('m-owed')) $('m-owed').textContent = '$' + totalOwed.toFixed(2);
+  if($('m-owed')) $('m-owed').textContent = S.showMoneyOwed ? '$' + totalOwed.toFixed(2) : '$****';
   if($('m-owed-s')) $('m-owed-s').textContent = owedJobs.length + ' unpaid';
-  if($('m-paid')) $('m-paid').textContent = '$' + totalCollected.toFixed(2);
+  if($('m-paid')) $('m-paid').textContent = S.showMoneyPaid ? '$' + totalCollected.toFixed(2) : '$****';
   if($('m-paid-s')) $('m-paid-s').textContent = displayPaid.length + (S.moneyFilter === 'month' ? ' this month' : ' total');
 
   if($('mf-month')) $('mf-month').className = S.moneyFilter === 'month' ? 'tb on' : 'tb';
@@ -536,7 +542,25 @@ function renderDash() {
       return (a.Time || '').localeCompare(b.Time || '');
     });
 
-  if($('t-ct')) $('t-ct').textContent = todayJobs.length ? todayJobs.length + ' job(s) scheduled today' : 'No jobs today — enjoy your day! 🌸';
+  const VICTORY_LINES = [
+    "Killed it today, Supermom! 💪",
+    "You crushed it. Time to Supermom yourself. 🛁",
+    "All done! Sandra: 1, Today: 0. 🏆",
+    "Board's clear. Go be a regular human for 5 mins. 😂",
+    "Mic drop. All jobs done. 🎤",
+    "Today's shift? Owned. 🦸‍♀️",
+    "Zero jobs remaining. Hero status: confirmed. ✨",
+    "You showed up. You delivered. Legendary. 🌟",
+    "Clean sweep! Supermom does it again. 🧹",
+    "Jobs? Demolished. You? Unstoppable. 🔥"
+  ];
+  const completedToday = S.jobs.filter(j => j.Job_Status === 'Completed' && j.Completion_Date === tod);
+  const todayCountText = todayJobs.length
+    ? todayJobs.length + ' job(s) scheduled today'
+    : completedToday.length
+      ? VICTORY_LINES[Math.floor(Math.random() * VICTORY_LINES.length)]
+      : 'No jobs today — enjoy your day! 🌸';
+  if($('t-ct')) $('t-ct').textContent = todayCountText;
   
   const upNextId = todayJobs.find(j => !j._pastDue)?.Job_ID || null;
   const tjList = $('today-jobs-list');
@@ -610,6 +634,12 @@ function renderDash() {
 }
 
 function setMoneyFilter(f)  { S.moneyFilter=f;     renderDash(); }
+function toggleMoney(e, type) {
+  if (e) e.stopPropagation();
+  const key = 'showMoney' + type;
+  S[key] = !S[key];
+  renderDash();
+}
 function showAllSched()     { S.showAllSched=true;  renderDash(); }
 function showAllArchived()  { S.showAllArc=true;    renderDash(); }
 function showAllOwed()      { S.showAllOwed=true;   renderDash(); }
