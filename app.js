@@ -4,7 +4,7 @@
 const APP_VERSION = '4.13';
 
 // ENVIRONMENT TOGGLE
-const IS_TEST = false; // Set to true to use the Development Sandbox (1N0wTq...)
+const IS_TEST = true; // Set to true to use the Development Sandbox (1N0wTq...)
 const PROD_URL = "https://script.google.com/macros/s/AKfycbwmhWli_n6kSgG9LiHWJrZGeZ73uvz7XrgO0G24i6MRyCcdFJ65hCmtY5oPPqCMZ9CEEA/exec";
 const TEST_URL = "https://script.google.com/macros/s/AKfycby_REPLACEME_TESTER_URL/exec";
 

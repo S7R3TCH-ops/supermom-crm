@@ -278,12 +278,19 @@ The `jrHTML()` function renders all home page job cards. Layout rules — do not
 - [ ] Supabase CLI
 - [ ] React + Vite project scaffold
 - [ ] Tailwind CSS
-- [ ] Vercel CLI
-
 ### Recovery
 1. **Aider:** ensure `C:\Users\jlund\.local\bin` in User PATH
-2. **clasp:** `npm install` then `npm run login`. Script ID: `1N0wTqDEKihPP6cR0yGJZYaSqViRQgkZMnufIb0UhmhVqAC-3QB6Hxp9R`
+2. **clasp:** `npm install` then `npm run login`. Sandra's Live ID: `1fVVQwc56dQPVRximpVsIcYCHuBY4OhOoXOg5P2DocNaCzuPqMU6XyoOP`
 3. **PurgeCSS:** `npm install`
+
+---
+
+## Parked List (Next Session)
+- [ ] **Leckie Profiles:** Fix deployed to Live GAS. **JOEL:** Run `mergeLeckieProfiles` manually in the Live script editor to finish the cleanup.
+- [x] **Victory Lines:** Funny/motivational completion messages restored to home page (v4.13).
+- [x] **Privacy Cards:** "Owed" and "Collected" totals are now hidden by default (v4.13).
+- [x] **Sandbox Setup:** True sandbox and environment toggle (`IS_TEST`) fully implemented.
+- [ ] **Tester URL:** Need to update `TEST_URL` in `app.js` once the next Sandbox deployment is created (current is temporary).
 
 ---
 
@@ -298,3 +305,4 @@ The `jrHTML()` function renders all home page job cards. Layout rules — do not
 - **Joel has ADHD** — maintain a visible Parked List of dropped topics, surface proactively
 - **Token hygiene** — delete old project files before uploading new versions
 - **Remind Joel** to run `claude-monitor` if sessions are getting long
+- **Strict Environment Separation** — `IS_TEST` toggle in `app.js` and Script ID in `.clasp.json` must match.
