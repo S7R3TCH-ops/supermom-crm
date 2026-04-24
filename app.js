@@ -3,7 +3,12 @@
 // ============================================================================
 const APP_VERSION = '4.13';
 
-const GAS_URL = "https://script.google.com/macros/s/AKfycbwmhWli_n6kSgG9LiHWJrZGeZ73uvz7XrgO0G24i6MRyCcdFJ65hCmtY5oPPqCMZ9CEEA/exec";
+// ENVIRONMENT TOGGLE
+const IS_TEST = false; // Set to true to use the Development Sandbox (1N0wTq...)
+const PROD_URL = "https://script.google.com/macros/s/AKfycbwmhWli_n6kSgG9LiHWJrZGeZ73uvz7XrgO0G24i6MRyCcdFJ65hCmtY5oPPqCMZ9CEEA/exec";
+const TEST_URL = "https://script.google.com/macros/s/AKfycby_REPLACEME_TESTER_URL/exec";
+
+const GAS_URL = IS_TEST ? TEST_URL : PROD_URL;
 
 const DL = {
   services: ['Deep Clean','Regular Clean','Move In / Move Out','Post-Renovation','Organization',

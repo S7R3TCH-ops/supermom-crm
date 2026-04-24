@@ -106,31 +106,39 @@ Password goes in a separate secure location — not in any env file committed to
 - `code.js` → v5.02
 - `index.html` → synced with app.js
 
+### Environments & Script IDs
+We maintain two distinct Google Apps Script (GAS) projects. **Note:** Currently, Sandra's live data is hosted on the project originally labeled "Tester".
+
+| Environment | Role | Script ID (`.clasp.json`) | Web App URL (`app.js`) |
+|---|---|---|---|
+| **Sandra's Live App** | Production | `1fVVQwc56dQPVRximpVsIcYCHuBY4OhOoXOg5P2DocNaCzuPqMU6XyoOP` | `https://script.google.com/macros/s/AKfycbwmhWli_n6kSgG9LiHWJrZGeZ73uvz7XrgO0G24i6MRyCcdFJ65hCmtY5oPPqCMZ9CEEA/exec` |
+| **Dev Sandbox** | Testing | `1N0wTqDEKihPP6cR0yGJZYaSqViRQgkZMnufIb0UhmhVqAC-3QB6Hxp9R` | `[Update once new deployment created]` |
+
 ### Legacy Deploy Checklist
-1. Bump version in modified file(s)
-2. Update versions above
-3. Push `index.html` + `app.js` to `main`:
-   ```
-   git checkout main
-   git checkout sandbox -- index.html app.js
-   git add index.html app.js
-   git commit -m "<describe the change>"
-   git push origin main
-   git checkout sandbox
-   ```
-4. For `code.js` changes: `npm run deploy` (pushes to GAS)
-5. Re-upload `app.js`, `code.js`, `CLAUDE.md` to Claude project
+1. **Prepare for Sandbox/Tester Push:**
+   - On the `sandbox` branch, set `IS_TEST = true` in `app.js`.
+   - Ensure `.clasp.json` has the **Dev Sandbox** Script ID.
+   - Run `npm run deploy` to test backend changes.
+2. **Prepare for Production/Sandra Push:**
+   - Bump version in modified file(s).
+   - Set `IS_TEST = false` in `app.js`.
+   - Update `.clasp.json` to **Sandra's Live App** Script ID.
+   - Run `npm run deploy`.
+3. **Push to GitHub:**
+   - Push `index.html` + `app.js` to `main` (for live site):
+     ```bash
+     git checkout main
+     git checkout sandbox -- index.html app.js
+     git add index.html app.js
+     git commit -m "<describe the change>"
+     git push origin main
+     git checkout sandbox
+     ```
+4. **Final Step:** Re-upload `app.js`, `code.js`, and `CLAUDE.md` to the Claude project context.
 
 ### Legacy Architecture Rules — DO NOT VIOLATE
-- **ALL GAS calls use GET with URL-encoded `payload` param.** POST causes CORS failure. Non-negotiable.
-- **No `LockService` in `doGet`** — causes indefinite spinner hangs.
-- **`loadAllData()` runs ONCE** on page load — never after saves or deletes.
-- **Soft deletes only** — `Is_Deleted='TRUE'`. No hard deletes.
-- **`getJobTotals(j, overrides)`** is the single source of truth for all job math.
-- **`TZ = 'America/Toronto'`** hardcoded — never use `getScriptTimeZone()`.
-- **`_pendingDeletes` Set** filters soft-deleted IDs from `loadAllData` to prevent ghost data.
-- **`IS_TEST` toggle** at top of `app.js` — NEVER commit `IS_TEST=true` to GitHub.
-- **Version numbers must be manually bumped** — no exceptions.
+- **IS_TEST toggle** at top of `app.js` — Controls which GAS backend is active. Default to `false` for production releases.
+- **clasp configuration** — ALWAYS check `.clasp.json` before running `npm run deploy`. It is easy to accidentally overwrite Sandra's live database if the ID is wrong.
 
 ### Legacy Version Bumping — MANDATORY
 Every time `app.js` is modified → bump version + update above.
